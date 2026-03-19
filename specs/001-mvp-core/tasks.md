@@ -37,20 +37,20 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T008 Create catalog data models (dataclasses) for Source, File, Content, Task, Chunk, Embedding, ModelRegistryEntry, ScanSchedule in `src/kris/catalog/models.py`
-- [ ] T009 Implement SQLite database connection manager with WAL mode, busy_timeout, foreign keys, and schema migration support in `src/kris/catalog/db.py`
-- [ ] T010 Implement MVP DDL schema creation (all tables and indexes from `data-model.md`) in `src/kris/catalog/db.py`
-- [ ] T011 [P] Write unit tests for database initialization, WAL mode verification, and schema creation in `tests/unit/test_catalog_db.py`
-- [ ] T012 Implement config schema dataclass and TOML loading/validation in `src/kris/config/schema.py` (single-source config sufficient for US1; multi-source extension in US3/T054)
-- [ ] T013 [P] Implement default config generation (XDG paths, sensible defaults, inline comments) in `src/kris/config/defaults.py`
-- [ ] T014 [P] Write unit tests for config loading, validation, defaults, and XDG path resolution in `tests/unit/test_config.py`
-- [ ] T015 Create shared test fixtures (temp directories, test SQLite databases, sample file trees) in `tests/conftest.py`
-- [ ] T016 Implement File CRUD operations (insert, upsert on scan, query by status/source/kind) in `src/kris/catalog/files.py`
-- [ ] T017 [P] Implement Content CRUD operations (insert-if-not-exists by content_hash, status updates) in `src/kris/catalog/content.py`
-- [ ] T018 [P] Implement Task CRUD operations (create, query by status/model_hint, update status, dependency checks) in `src/kris/catalog/tasks.py`
-- [ ] T019 Write unit tests for File, Content, and Task CRUD operations in `tests/unit/test_catalog.py`
-- [ ] T020 Create CLI app skeleton with Typer, Rich console, `--json` global flag, `--verbose` flag, error-to-stderr handling in `src/kris/cli/app.py`
-- [ ] CT002 Run `just check`, commit Phase 2: "feat(001): foundational — catalog, config, CLI skeleton"
+- [x] T008 Create catalog data models (dataclasses) for Source, File, Content, Task, Chunk, Embedding, ModelRegistryEntry, ScanSchedule in `src/kris/catalog/models.py`
+- [x] T009 Implement SQLite database connection manager with WAL mode, busy_timeout, foreign keys, and schema migration support in `src/kris/catalog/db.py`
+- [x] T010 Implement MVP DDL schema creation (all tables and indexes from `data-model.md`) in `src/kris/catalog/db.py`
+- [x] T011 [P] Write unit tests for database initialization, WAL mode verification, and schema creation in `tests/unit/test_catalog_db.py`
+- [x] T012 Implement config schema dataclass and TOML loading/validation in `src/kris/config/schema.py` (single-source config sufficient for US1; multi-source extension in US3/T054)
+- [x] T013 [P] Implement default config generation (XDG paths, sensible defaults, inline comments) in `src/kris/config/defaults.py`
+- [x] T014 [P] Write unit tests for config loading, validation, defaults, and XDG path resolution in `tests/unit/test_config.py`
+- [x] T015 Create shared test fixtures (temp directories, test SQLite databases, sample file trees) in `tests/conftest.py`
+- [x] T016 Implement File CRUD operations (insert, upsert on scan, query by status/source/kind) in `src/kris/catalog/files.py`
+- [x] T017 [P] Implement Content CRUD operations (insert-if-not-exists by content_hash, status updates) in `src/kris/catalog/content.py`
+- [x] T018 [P] Implement Task CRUD operations (create, query by status/model_hint, update status, dependency checks) in `src/kris/catalog/tasks.py`
+- [x] T019 Write unit tests for File, Content, and Task CRUD operations in `tests/unit/test_catalog.py`
+- [x] T020 Create CLI app skeleton with Typer, Rich console, `--json` global flag, `--verbose` flag, error-to-stderr handling in `src/kris/cli/app.py`
+- [x] CT002 Run `just check`, commit Phase 2: "feat(001): foundational — catalog, config, CLI skeleton"
 
 **Checkpoint**: Foundation ready — catalog, config, and CLI skeleton operational. User story implementation can begin.
 

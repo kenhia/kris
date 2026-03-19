@@ -1,0 +1,199 @@
+"""Configuration schema and TOML loading/validation."""
+
+from __future__ import annotations
+
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+def _xdg_config_home() -> Path:
+    """Return XDG_CONFIG_HOME, defaulting to ~/.config."""
+    import os
+
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+
+
+def _xdg_data_home() -> Path:
+    """Return XDG_DATA_HOME, defaulting to ~/.local/share."""
+    import os
+
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+
+def _xdg_cache_home() -> Path:
+    """Return XDG_CACHE_HOME, defaulting to ~/.cache."""
+    import os
+
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+
+
+def default_config_path() -> Path:
+    return _xdg_config_home() / "kris" / "config.toml"
+
+
+def default_data_dir() -> Path:
+    return _xdg_data_home() / "kris"
+
+
+def default_cache_dir() -> Path:
+    return _xdg_cache_home() / "kris"
+
+
+@dataclass
+class ScheduleConfig:
+    path_pattern: str = "**"
+    interval_minutes: int = 60
+    priority: int = 1
+
+
+@dataclass
+class SourceConfig:
+    name: str
+    base_path: str
+    source_type: str = "local"
+    exclude_patterns: list[str] = field(default_factory=list)
+    schedules: list[ScheduleConfig] = field(default_factory=list)
+
+
+@dataclass
+class EmbeddingModelConfig:
+    name: str = "BAAI/bge-base-en-v1.5"
+    dimensions: int = 768
+    vram_gb: float = 0.5
+
+
+@dataclass
+class LLMModelConfig:
+    name: str = ""
+    model_path: str = ""
+    vram_gb: float = 8.0
+
+
+@dataclass
+class ModelsConfig:
+    embedding: EmbeddingModelConfig = field(default_factory=EmbeddingModelConfig)
+    llm: LLMModelConfig = field(default_factory=LLMModelConfig)
+
+
+@dataclass
+class KrisConfig:
+    sources: dict[str, SourceConfig] = field(default_factory=dict)
+    models: ModelsConfig = field(default_factory=ModelsConfig)
+    data_dir: str = ""
+    cache_dir: str = ""
+    log_level: str = "INFO"
+
+    def __post_init__(self):
+        if not self.data_dir:
+            self.data_dir = str(default_data_dir())
+        if not self.cache_dir:
+            self.cache_dir = str(default_cache_dir())
+
+    @property
+    def db_path(self) -> Path:
+        return Path(self.data_dir) / "catalog.db"
+
+    @property
+    def qdrant_path(self) -> Path:
+        return Path(self.cache_dir) / "qdrant"
+
+
+class ConfigError(Exception):
+    """Raised when configuration is invalid."""
+
+
+def _parse_schedule(raw: dict) -> ScheduleConfig:
+    return ScheduleConfig(
+        path_pattern=raw.get("path_pattern", "**"),
+        interval_minutes=raw.get("interval_minutes", 60),
+        priority=raw.get("priority", 1),
+    )
+
+
+def _parse_source(source_id: str, raw: dict) -> SourceConfig:
+    name = raw.get("name")
+    if not name:
+        raise ConfigError(f"Source '{source_id}' is missing required field 'name'")
+    base_path = raw.get("base_path")
+    if not base_path:
+        raise ConfigError(f"Source '{source_id}' is missing required field 'base_path'")
+
+    schedules_raw = raw.get("schedules", [])
+    schedules = [_parse_schedule(s) for s in schedules_raw]
+
+    return SourceConfig(
+        name=name,
+        base_path=str(Path(base_path).expanduser()),
+        source_type=raw.get("type", "local"),
+        exclude_patterns=raw.get("exclude_patterns", []),
+        schedules=schedules,
+    )
+
+
+def _parse_models(raw: dict) -> ModelsConfig:
+    embedding_raw = raw.get("embedding", {})
+    llm_raw = raw.get("llm", {})
+    return ModelsConfig(
+        embedding=EmbeddingModelConfig(
+            name=embedding_raw.get("name", "BAAI/bge-base-en-v1.5"),
+            dimensions=embedding_raw.get("dimensions", 768),
+            vram_gb=embedding_raw.get("vram_gb", 0.5),
+        ),
+        llm=LLMModelConfig(
+            name=llm_raw.get("name", ""),
+            model_path=llm_raw.get("model_path", ""),
+            vram_gb=llm_raw.get("vram_gb", 8.0),
+        ),
+    )
+
+
+def load_config(config_path: str | Path | None = None) -> KrisConfig:
+    """Load and validate configuration from a TOML file."""
+    if config_path is None:
+        config_path = default_config_path()
+    config_path = Path(config_path)
+
+    if not config_path.exists():
+        raise ConfigError(f"Configuration file not found: {config_path}")
+
+    text = config_path.read_text(encoding="utf-8")
+    try:
+        raw = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"Invalid TOML in {config_path}: {e}") from e
+
+    sources = {}
+    for source_id, source_raw in raw.get("sources", {}).items():
+        sources[source_id] = _parse_source(source_id, source_raw)
+
+    models = _parse_models(raw.get("models", {}))
+
+    return KrisConfig(
+        sources=sources,
+        models=models,
+        data_dir=raw.get("data_dir", ""),
+        cache_dir=raw.get("cache_dir", ""),
+        log_level=raw.get("log_level", "INFO"),
+    )
+
+
+def validate_config(config: KrisConfig) -> list[str]:
+    """Validate a loaded config. Returns a list of error messages (empty = valid)."""
+    errors: list[str] = []
+
+    if not config.sources:
+        errors.append("No sources configured. Add at least one [sources.<id>] section.")
+
+    for source_id, source in config.sources.items():
+        source_path = Path(source.base_path)
+        if not source_path.is_absolute():
+            errors.append(
+                f"Source '{source_id}': base_path must be absolute (got '{source.base_path}')"
+            )
+
+        for i, schedule in enumerate(source.schedules):
+            if schedule.interval_minutes < 1:
+                errors.append(f"Source '{source_id}' schedule {i}: interval_minutes must be >= 1")
+
+    return errors

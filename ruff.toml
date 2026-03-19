@@ -14,6 +14,9 @@ select = [
     "TCH",  # flake8-type-checking
     "RUF",  # ruff-specific rules
 ]
+ignore = [
+    "TC003",  # false positives with runtime-used stdlib imports + __future__ annotations
+]
 
 [lint.isort]
 known-first-party = ["kris"]
