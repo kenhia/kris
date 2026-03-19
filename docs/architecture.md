@@ -342,8 +342,9 @@ Processing outputs are stored in typed backends appropriate to their access patt
 
 **Qdrant collection strategy:**
 - Named vector spaces per embedding model (e.g., `text`, `code`)
-- Payload includes: `content_hash`, `source_id`, `chunk_index`, `file_kind`, `path`
-- Enables filtered search (by source, file kind, path prefix)
+- Payload includes: `content_hash`, `chunk_index`, `file_kind`
+- File paths and source IDs resolved at query time by joining `content_hash` back to SQLite (ensures deduped content returns all associated paths)
+- Enables filtered search (by file kind; source/path filtering via SQLite join)
 
 ---
 
