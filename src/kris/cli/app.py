@@ -59,3 +59,7 @@ def print_json_response(command: str, data: dict) -> None:
     import json
 
     out_console.print_json(json.dumps({"status": "ok", "command": command, "data": data}))
+
+
+# Import subcommand modules to register them with the app
+import kris.cli.index  # noqa: F401, E402
