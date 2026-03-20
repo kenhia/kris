@@ -111,3 +111,27 @@ def embed_chunks(
     conn.commit()
 
     return len(embedding_records)
+
+
+def delete_points(qdrant_path: Path, point_ids: list[str]) -> int:
+    """Delete points from Qdrant by their IDs.
+
+    Returns the number of points requested for deletion.
+    """
+    if not point_ids:
+        return 0
+
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import PointIdsList
+
+    client = QdrantClient(path=str(qdrant_path))
+    collections = [c.name for c in client.get_collections().collections]
+    if COLLECTION_NAME not in collections:
+        return 0
+
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=PointIdsList(points=point_ids),  # type: ignore[arg-type]
+    )
+    logger.info("Deleted %d points from Qdrant collection '%s'", len(point_ids), COLLECTION_NAME)
+    return len(point_ids)

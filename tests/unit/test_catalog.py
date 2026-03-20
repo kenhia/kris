@@ -365,3 +365,45 @@ class TestDuplicateDetection:
         groups = get_duplicate_groups(db, min_size=1000)
         assert len(groups) == 1
         assert groups[0]["content_hash"] == "big"
+
+
+class TestArchiveLogic:
+    """Tests for archive/missing detection and visibility transitions."""
+
+    def test_mark_missing_sets_visibility_and_timestamp(self, db, sample_source):
+        """Marking a file missing sets visibility and disappeared_at."""
+        f = insert_file(db, _make_file(sample_source))
+        update_file_visibility(db, f.id, "missing", "2026-03-20T00:00:00")
+        updated = get_file_by_id(db, f.id)
+        assert updated is not None
+        assert updated.visibility == "missing"
+        assert updated.disappeared_at == "2026-03-20T00:00:00"
+
+    def test_restore_missing_file(self, db, sample_source):
+        """Re-upserting a missing file restores it to active."""
+        f = insert_file(db, _make_file(sample_source, path="/restore.txt"))
+        update_file_visibility(db, f.id, "missing", "2026-03-20T00:00:00")
+        # Re-upsert simulates scanner seeing the file again
+        upsert_file(db, _make_file(sample_source, path="/restore.txt"))
+        files = get_files_by_source(db, sample_source, visibility="active")
+        assert len(files) == 1
+        assert files[0].path == "/restore.txt"
+
+    def test_missing_files_excluded_from_active_queries(self, db, sample_source):
+        """Missing files don't appear in active file queries."""
+        f1 = insert_file(db, _make_file(sample_source, path="/active.txt"))
+        f2 = insert_file(db, _make_file(sample_source, path="/gone.txt"))
+        update_file_visibility(db, f2.id, "missing", "2026-01-01T00:00:00")
+        active = get_files_by_source(db, sample_source, visibility="active")
+        assert len(active) == 1
+        assert active[0].id == f1.id
+
+    def test_multiple_visibility_transitions(self, db, sample_source):
+        """File can transition active -> missing -> active."""
+        f = insert_file(db, _make_file(sample_source, path="/toggle.txt"))
+        update_file_visibility(db, f.id, "missing", "2026-01-01T00:00:00")
+        update_file_visibility(db, f.id, "active", None)
+        updated = get_file_by_id(db, f.id)
+        assert updated is not None
+        assert updated.visibility == "active"
+        assert updated.disappeared_at is None

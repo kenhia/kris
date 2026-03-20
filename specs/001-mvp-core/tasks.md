@@ -200,17 +200,17 @@
 
 ### Tests for User Story 6
 
-- [ ] T067 [P] [US6] Write unit tests for archive logic: missing detection, visibility transition, timestamp tracking in `tests/unit/test_catalog.py` (extend)
-- [ ] T068 [P] [US6] Write unit tests for cleanup: selector filtering (path, age, source), cascade delete of artifacts in `tests/unit/test_cleanup.py`
-- [ ] T069 [P] [US6] Write integration test for archive flow: index → delete file → re-index → verify missing → cleanup in `tests/integration/test_index_flow.py` (extend)
+- [x] T067 [P] [US6] Write unit tests for archive logic: missing detection, visibility transition, timestamp tracking in `tests/unit/test_catalog.py` (extend)
+- [x] T068 [P] [US6] Write unit tests for cleanup: selector filtering (path, age, source), cascade delete of artifacts in `tests/unit/test_cleanup.py`
+- [x] T069 [P] [US6] Write integration test for archive flow: index → delete file → re-index → verify missing → cleanup in `tests/integration/test_index_flow.py` (extend)
 
 ### Implementation for User Story 6
 
-- [ ] T070 [US6] Implement archive-on-deletion in scanner catalog writes: set `visibility='missing'` and `disappeared_at` for files not seen in scan in `scanner/src/catalog.rs` (extend)
-- [ ] T071 [US6] Implement cleanup operations: delete file/content/chunk/embedding records by selectors (path pattern, age, source) with cascade in `src/kris/catalog/files.py` (extend)
-- [ ] T072 [US6] Implement Qdrant point deletion for cleaned-up embeddings in `src/kris/processing/embed.py` (extend)
-- [ ] T073 [US6] Implement `kris cleanup` CLI command: selector flags (--older-than, --path, --source), dry-run, confirmation prompt, Rich output in `src/kris/cli/cleanup.py`
-- [ ] CT008 Run `just check`, commit Phase 8: "feat(001): US6 — archive-on-deletion, cleanup command"
+- [x] T070 [US6] Implement archive-on-deletion in scanner catalog writes: set `visibility='missing'` and `disappeared_at` for files not seen in scan in `scanner/src/catalog.rs` (extend)
+- [x] T071 [US6] Implement cleanup operations: delete file/content/chunk/embedding records by selectors (path pattern, age, source) with cascade in `src/kris/catalog/files.py` (extend)
+- [x] T072 [US6] Implement Qdrant point deletion for cleaned-up embeddings in `src/kris/processing/embed.py` (extend)
+- [x] T073 [US6] Implement `kris cleanup` CLI command: selector flags (--older-than, --path, --source), dry-run, confirmation prompt, Rich output in `src/kris/cli/cleanup.py`
+- [x] CT008 Run `just check`, commit Phase 8: "feat(001): US6 — archive-on-deletion, cleanup command"
 
 **Checkpoint**: Files missing from disk are preserved. `kris cleanup` removes them with user confirmation.
 

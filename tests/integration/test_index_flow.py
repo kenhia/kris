@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from kris.catalog.content import get_duplicate_groups
 from kris.catalog.db import get_connection
+from kris.catalog.files import cleanup_missing_files
 from kris.planner.planner import plan_pending_content
 from kris.processing.chunk import chunk_markdown, chunk_text, save_chunks
 from kris.processing.extract import extract_for_content
@@ -285,4 +288,112 @@ class TestDedupFlow:
         for g in groups:
             assert g["count"] == 2
 
+        conn.close()
+
+
+class TestArchiveFlow:
+    """Integration: delete file -> re-index -> verify missing -> cleanup."""
+
+    def test_deleted_file_becomes_missing(self, scanner_binary, index_env):
+        """After deleting a file and re-scanning, it's marked as missing."""
+        data_dir = index_env["data_dir"]
+        db_path = index_env["db_path"]
+
+        # First scan
+        subprocess.run(
+            [
+                str(scanner_binary),
+                "--db",
+                str(db_path),
+                "--source-id",
+                "src-1",
+                "--base-path",
+                str(data_dir),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+
+        conn = get_connection(db_path)
+        initial_count = conn.execute(
+            "SELECT COUNT(*) FROM file WHERE visibility = 'active'"
+        ).fetchone()[0]
+        assert initial_count == 3
+        conn.close()
+
+        # Delete a file
+        os.remove(data_dir / "notes.txt")
+
+        # Wait for timestamp to advance (scanner uses second-level resolution)
+        time.sleep(1.1)
+
+        # Re-scan
+        subprocess.run(
+            [
+                str(scanner_binary),
+                "--db",
+                str(db_path),
+                "--source-id",
+                "src-1",
+                "--base-path",
+                str(data_dir),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+
+        conn = get_connection(db_path)
+        active_count = conn.execute(
+            "SELECT COUNT(*) FROM file WHERE visibility = 'active'"
+        ).fetchone()[0]
+        missing_count = conn.execute(
+            "SELECT COUNT(*) FROM file WHERE visibility = 'missing'"
+        ).fetchone()[0]
+        assert active_count == 2
+        assert missing_count == 1
+
+        # Verify the missing file is notes.txt
+        missing = conn.execute("SELECT path FROM file WHERE visibility = 'missing'").fetchone()
+        assert "notes.txt" in missing["path"]
+        conn.close()
+
+    def test_cleanup_removes_missing_files(self, scanner_binary, index_env):
+        """After marking files missing, cleanup removes them."""
+        data_dir = index_env["data_dir"]
+        db_path = index_env["db_path"]
+
+        # Scan, delete, re-scan
+        for _i in range(2):
+            subprocess.run(
+                [
+                    str(scanner_binary),
+                    "--db",
+                    str(db_path),
+                    "--source-id",
+                    "src-1",
+                    "--base-path",
+                    str(data_dir),
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+            if _i == 0:
+                os.remove(data_dir / "notes.txt")
+                time.sleep(1.1)  # scanner uses second-level timestamps
+
+        conn = get_connection(db_path)
+        result = cleanup_missing_files(conn)
+        assert result["files_removed"] == 1
+
+        total = conn.execute("SELECT COUNT(*) FROM file").fetchone()[0]
+        assert total == 2  # only active files remain
         conn.close()

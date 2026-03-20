@@ -264,3 +264,116 @@ def get_failed_files(
         }
         for r in rows
     ]
+
+
+def cleanup_missing_files(
+    conn: sqlite3.Connection,
+    older_than_days: int | None = None,
+    source_id: str | None = None,
+    path_pattern: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Remove missing files and their associated artifacts.
+
+    Returns a dict with: files_removed, chunks_removed, embeddings_removed,
+    qdrant_point_ids (list of Qdrant point IDs to delete externally).
+    """
+    conditions = ["f.visibility = 'missing'"]
+    params: list = []
+
+    if older_than_days is not None:
+        conditions.append("f.disappeared_at <= datetime('now', ?)")
+        params.append(f"-{older_than_days} days")
+
+    if source_id:
+        conditions.append("f.source_id = ?")
+        params.append(source_id)
+
+    if path_pattern:
+        conditions.append("f.path LIKE ?")
+        params.append(path_pattern)
+
+    where = " AND ".join(conditions)
+
+    # Find the files to clean up
+    file_rows = conn.execute(
+        f"SELECT f.id, f.content_hash FROM file f WHERE {where}",
+        params,
+    ).fetchall()
+
+    if not file_rows:
+        return {
+            "files_removed": 0,
+            "chunks_removed": 0,
+            "embeddings_removed": 0,
+            "qdrant_point_ids": [],
+        }
+
+    file_ids = [r["id"] for r in file_rows]
+    # Collect content hashes to check for orphaned content
+    content_hashes = list({r["content_hash"] for r in file_rows})
+
+    # Collect Qdrant point IDs before deleting embeddings
+    qdrant_point_ids: list[str] = []
+    embeddings_removed = 0
+    chunks_removed = 0
+
+    for ch in content_hashes:
+        # Only clean up artifacts if no other active files reference this content
+        other_active = conn.execute(
+            "SELECT COUNT(*) FROM file WHERE content_hash = ? AND visibility = 'active'",
+            (ch,),
+        ).fetchone()[0]
+        if other_active > 0:
+            continue
+
+        # Collect qdrant point IDs
+        point_rows = conn.execute(
+            "SELECT e.qdrant_point_id FROM embedding e "
+            "JOIN chunk c ON c.id = e.chunk_id "
+            "WHERE c.content_hash = ?",
+            (ch,),
+        ).fetchall()
+        qdrant_point_ids.extend(r["qdrant_point_id"] for r in point_rows)
+
+        if not dry_run:
+            # Delete embeddings for chunks of this content
+            emb_count = conn.execute(
+                "DELETE FROM embedding WHERE chunk_id IN "
+                "(SELECT id FROM chunk WHERE content_hash = ?)",
+                (ch,),
+            ).rowcount
+            embeddings_removed += emb_count
+
+            # Delete chunks
+            chunk_count = conn.execute(
+                "DELETE FROM chunk WHERE content_hash = ?",
+                (ch,),
+            ).rowcount
+            chunks_removed += chunk_count
+
+            # Delete tasks
+            conn.execute("DELETE FROM task WHERE content_hash = ?", (ch,))
+
+            # Delete content record
+            conn.execute("DELETE FROM content WHERE content_hash = ?", (ch,))
+        else:
+            embeddings_removed += len(point_rows)
+            chunks_removed += conn.execute(
+                "SELECT COUNT(*) FROM chunk WHERE content_hash = ?", (ch,)
+            ).fetchone()[0]
+
+    files_removed = len(file_ids)
+
+    if not dry_run:
+        # Delete the file records
+        placeholders = ",".join("?" * len(file_ids))
+        conn.execute(f"DELETE FROM file WHERE id IN ({placeholders})", file_ids)
+        conn.commit()
+
+    return {
+        "files_removed": files_removed,
+        "chunks_removed": chunks_removed,
+        "embeddings_removed": embeddings_removed,
+        "qdrant_point_ids": qdrant_point_ids,
+    }
