@@ -134,17 +134,17 @@
 
 ### Tests for User Story 3
 
-- [ ] T052 [P] [US3] Write unit tests for multi-source config parsing, schedule validation, exclude pattern handling in `tests/unit/test_config.py` (extend existing)
-- [ ] T053 [P] [US3] Write unit tests for `kris init` default config creation and `kris config validate` in `tests/unit/test_config_cmd.py`
+- [x] T052 [P] [US3] Write unit tests for multi-source config parsing, schedule validation, exclude pattern handling in `tests/unit/test_config.py` (extend existing)
+- [x] T053 [P] [US3] Write unit tests for `kris init` default config creation and `kris config validate` in `tests/unit/test_config_cmd.py`
 
 ### Implementation for User Story 3
 
-- [ ] T054 [US3] Extend config schema to support multiple sources with per-source schedules and exclude patterns in `src/kris/config/schema.py`
-- [ ] T055 [US3] Implement `kris init` CLI command: create default config at XDG path with inline comments in `src/kris/cli/config_cmd.py`
-- [ ] T056 [US3] Implement `kris config validate` CLI command: load and validate config, report errors in `src/kris/cli/config_cmd.py`
-- [ ] T057 [US3] Update scanner runner to iterate over configured sources and pass per-source settings to the Rust scanner in `src/kris/scanner/runner.py`
-- [ ] T058 [US3] Update Rust scanner to accept exclude patterns and scan schedule metadata from CLI args in `scanner/src/main.rs`
-- [ ] CT005 Run `just check`, commit Phase 5: "feat(001): US3 — multi-source config, init, validate"
+- [x] T054 [US3] Extend config schema to support multiple sources with per-source schedules and exclude patterns in `src/kris/config/schema.py`
+- [x] T055 [US3] Implement `kris init` CLI command: create default config at XDG path with inline comments in `src/kris/cli/config_cmd.py`
+- [x] T056 [US3] Implement `kris config validate` CLI command: load and validate config, report errors in `src/kris/cli/config_cmd.py`
+- [x] T057 [US3] Update scanner runner to iterate over configured sources and pass per-source settings to the Rust scanner in `src/kris/scanner/runner.py`
+- [x] T058 [US3] Update Rust scanner to accept exclude patterns and scan schedule metadata from CLI args in `scanner/src/main.rs`
+- [x] CT005 Run `just check`, commit Phase 5: "feat(001): US3 — multi-source config, init, validate"
 
 **Checkpoint**: Multiple sources with different schedules are supported. `kris init` bootstraps a new user.
 

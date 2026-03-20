@@ -219,3 +219,60 @@ class TestGenerateDefaultConfig:
         generate_default_config(path)
         config = load_config(path)
         assert "my-files" in config.sources
+
+
+MULTI_SOURCE_CONFIG = """\
+[sources.home]
+name = "Home"
+base_path = "/home/user"
+exclude_patterns = [".git", "node_modules"]
+
+[[sources.home.schedules]]
+path_pattern = "**"
+interval_minutes = 30
+
+[sources.nas]
+name = "NAS"
+base_path = "/mnt/nas"
+exclude_patterns = [".git"]
+
+[[sources.nas.schedules]]
+path_pattern = "**/*.py"
+interval_minutes = 120
+priority = 2
+
+[[sources.nas.schedules]]
+path_pattern = "docs/**"
+interval_minutes = 60
+priority = 1
+"""
+
+
+class TestMultiSourceConfig:
+    def test_loads_multiple_sources(self, tmp_path):
+        path = _write_config(tmp_path / "config.toml", MULTI_SOURCE_CONFIG)
+        config = load_config(path)
+        assert len(config.sources) == 2
+        assert "home" in config.sources
+        assert "nas" in config.sources
+
+    def test_per_source_exclude_patterns(self, tmp_path):
+        path = _write_config(tmp_path / "config.toml", MULTI_SOURCE_CONFIG)
+        config = load_config(path)
+        assert config.sources["home"].exclude_patterns == [".git", "node_modules"]
+        assert config.sources["nas"].exclude_patterns == [".git"]
+
+    def test_per_source_schedules(self, tmp_path):
+        path = _write_config(tmp_path / "config.toml", MULTI_SOURCE_CONFIG)
+        config = load_config(path)
+        assert len(config.sources["home"].schedules) == 1
+        assert config.sources["home"].schedules[0].interval_minutes == 30
+        assert len(config.sources["nas"].schedules) == 2
+        assert config.sources["nas"].schedules[0].path_pattern == "**/*.py"
+        assert config.sources["nas"].schedules[1].interval_minutes == 60
+
+    def test_validate_multi_source_valid(self, tmp_path):
+        path = _write_config(tmp_path / "config.toml", MULTI_SOURCE_CONFIG)
+        config = load_config(path)
+        errors = validate_config(config)
+        assert errors == []
