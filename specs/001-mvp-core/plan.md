@@ -268,6 +268,23 @@ Finalize the MVP for usability.
 8. Performance benchmarks against success criteria (review with user before optimizing)
 9. Architecture doc review and update
 
+### Phase F — GPU Embedding Performance (B006)
+
+Fix embedding throughput — GPU is available but per-content-hash
+overhead makes the pipeline ~100x slower than necessary.
+
+**Root cause**: `embed_chunks()` is called once per content hash.
+Each call instantiates a new `QdrantClient(path=...)` (expensive for
+embedded mode) and calls `model.encode()` with a tiny batch (typically
+1-5 chunks). The GPU is on `cuda:0` and PyTorch has CUDA 12.8, so
+compute is not the issue — per-call overhead is.
+
+**Components**:
+1. Create Qdrant client once and pass it through the embed pipeline
+2. Log the device at model load time for user visibility
+3. Batch `model.encode()` across content hashes for GPU throughput
+4. Verify GPU utilization with `nvtop` during a re-embed run
+
 ## Complexity Tracking
 
 No constitution violations. All design choices follow the simplest

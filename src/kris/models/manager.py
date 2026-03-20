@@ -41,6 +41,7 @@ class ModelManager:
         from sentence_transformers import SentenceTransformer
 
         model = SentenceTransformer(info.name)
+        logger.info("Embedding model loaded on device: %s", model.device)
         self._loaded_model = model
         self._loaded_model_id = info.model_id
         self._loaded_info = info

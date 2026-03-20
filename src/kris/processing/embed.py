@@ -6,7 +6,7 @@ import logging
 import sqlite3
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from kris.catalog.models import Embedding
 
@@ -19,12 +19,17 @@ logger = logging.getLogger(__name__)
 COLLECTION_NAME = "kris_chunks"
 
 
-def ensure_collection(qdrant_path: Path, dimensions: int) -> None:
-    """Create the Qdrant collection if it doesn't exist."""
+def create_qdrant_client(qdrant_path: Path) -> Any:
+    """Create a QdrantClient for embedded-mode storage."""
     from qdrant_client import QdrantClient
+
+    return QdrantClient(path=str(qdrant_path))
+
+
+def ensure_collection(client: Any, dimensions: int) -> None:
+    """Create the Qdrant collection if it doesn't exist."""
     from qdrant_client.models import Distance, VectorParams
 
-    client = QdrantClient(path=str(qdrant_path))
     collections = [c.name for c in client.get_collections().collections]
     if COLLECTION_NAME not in collections:
         client.create_collection(
@@ -40,12 +45,13 @@ def embed_chunks(
     model_manager: ModelManager,
     model_info: ModelInfo,
     qdrant_path: Path,
+    *,
+    client: Any | None = None,
 ) -> int:
     """Embed all chunks for a content record and write to Qdrant + SQLite.
 
     Returns the number of embeddings created.
     """
-    from qdrant_client import QdrantClient
     from qdrant_client.models import PointStruct
 
     # Get chunks for this content
@@ -66,10 +72,10 @@ def embed_chunks(
 
     # Ensure collection exists
     dimensions = model_info.dimensions or len(embeddings[0])
-    ensure_collection(qdrant_path, dimensions)
+    if client is None:
+        client = create_qdrant_client(qdrant_path)
+    ensure_collection(client, dimensions)
 
-    # Write to Qdrant
-    client = QdrantClient(path=str(qdrant_path))
     points = []
     embedding_records = []
 

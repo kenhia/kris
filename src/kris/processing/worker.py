@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from kris.models.manager import ModelManager
     from kris.models.registry import ModelRegistry
 from kris.processing.chunk import chunk_code, chunk_markdown, chunk_text, save_chunks
-from kris.processing.embed import embed_chunks
+from kris.processing.embed import create_qdrant_client, embed_chunks
 from kris.processing.extract import extract_for_content
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,8 @@ def execute_task(
     qdrant_path: Path,
     model_manager: ModelManager,
     registry: ModelRegistry,
+    *,
+    qdrant_client: object | None = None,
 ) -> bool:
     """Execute a single task. Returns True on success."""
     now = datetime.now(UTC).isoformat()
@@ -115,7 +117,14 @@ def execute_task(
             if model_info is None:
                 raise RuntimeError("Embedding model not found in registry")
 
-            count = embed_chunks(conn, task.content_hash, model_manager, model_info, qdrant_path)
+            count = embed_chunks(
+                conn,
+                task.content_hash,
+                model_manager,
+                model_info,
+                qdrant_path,
+                client=qdrant_client,
+            )
             logger.info("Embedded %d chunks for %s", count, task.content_hash[:12])
 
         else:
@@ -151,6 +160,10 @@ def run_worker(
     completed = 0
     failed = 0
 
+    # Create a single Qdrant client for the entire run to avoid
+    # per-task open/close overhead in embedded mode.
+    qdrant_client = create_qdrant_client(qdrant_path)
+
     # Process in priority order, grouped by model_hint for affinity
     # First pass: non-model tasks (extract, chunk)
     for task_type in ["extract", "chunk", "embed"]:
@@ -166,7 +179,15 @@ def run_worker(
                 if not _check_dependencies(conn, task):
                     continue
 
-                success = execute_task(conn, task, data_dir, qdrant_path, model_manager, registry)
+                success = execute_task(
+                    conn,
+                    task,
+                    data_dir,
+                    qdrant_path,
+                    model_manager,
+                    registry,
+                    qdrant_client=qdrant_client,
+                )
                 if success:
                     completed += 1
                 else:

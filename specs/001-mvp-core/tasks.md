@@ -234,6 +234,19 @@
 
 ---
 
+## Phase 10: GPU Embedding Performance (B006)
+
+**Purpose**: Fix embedding pipeline throughput — eliminate per-content-hash overhead
+
+- [x] T084 Diagnose: confirm `torch.cuda.is_available()`, log device at model load time in `src/kris/models/manager.py`
+- [x] T085 [P] Refactor `src/kris/processing/embed.py`: accept a `QdrantClient` parameter instead of instantiating per call
+- [x] T086 [P] Update `src/kris/processing/worker.py`: create `QdrantClient` once in `run_worker()`, pass to `execute_task()` and `embed_chunks()`
+- [x] T087 [P] Update callers of `embed_chunks()` and `delete_points()` to pass/use shared client (including tests)
+- [ ] T088 Verify: run `kris index` on a test directory, confirm GPU compute visible in `nvtop`, measure throughput improvement
+- [x] CT010 Run `just check`, commit Phase 10: "perf(001): GPU embedding — eliminate per-call QdrantClient overhead"
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
