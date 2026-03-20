@@ -64,4 +64,5 @@ def print_json_response(command: str, data: dict) -> None:
 # Import subcommand modules to register them with the app
 import kris.cli.config_cmd  # noqa: E402
 import kris.cli.index  # noqa: E402
-import kris.cli.query  # noqa: F401, E402
+import kris.cli.query  # noqa: E402
+import kris.cli.status  # noqa: E402, F401

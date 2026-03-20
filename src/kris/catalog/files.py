@@ -157,3 +157,110 @@ def update_file_visibility(
         (visibility, disappeared_at, file_id),
     )
     conn.commit()
+
+
+def get_status_summary(
+    conn: sqlite3.Connection,
+    source_id: str | None = None,
+) -> list[dict]:
+    """Get aggregate file counts per source, grouped by kind and status.
+
+    Returns a list of dicts, one per source, with keys:
+    source_id, source_name, total_files, by_kind, by_status,
+    total_chunks, total_embeddings.
+    """
+    source_filter = ""
+    params: list = []
+    if source_id:
+        source_filter = "WHERE s.id = ?"
+        params = [source_id]
+
+    sources = conn.execute(
+        f"SELECT s.id, s.name, s.last_scan FROM source s {source_filter}",
+        params,
+    ).fetchall()
+
+    results = []
+    for src in sources:
+        sid = src["id"]
+
+        total = conn.execute(
+            "SELECT COUNT(*) FROM file WHERE source_id = ? AND visibility = 'active'",
+            (sid,),
+        ).fetchone()[0]
+
+        kind_rows = conn.execute(
+            "SELECT file_kind, COUNT(*) as cnt FROM file "
+            "WHERE source_id = ? AND visibility = 'active' GROUP BY file_kind",
+            (sid,),
+        ).fetchall()
+        by_kind = {r["file_kind"]: r["cnt"] for r in kind_rows}
+
+        status_rows = conn.execute(
+            "SELECT processing_status, COUNT(*) as cnt FROM file "
+            "WHERE source_id = ? AND visibility = 'active' GROUP BY processing_status",
+            (sid,),
+        ).fetchall()
+        by_status = {r["processing_status"]: r["cnt"] for r in status_rows}
+
+        chunk_count = conn.execute(
+            "SELECT COUNT(*) FROM chunk c "
+            "JOIN file f ON f.content_hash = c.content_hash "
+            "WHERE f.source_id = ? AND f.visibility = 'active'",
+            (sid,),
+        ).fetchone()[0]
+
+        embed_count = conn.execute(
+            "SELECT COUNT(*) FROM embedding e "
+            "JOIN chunk c ON c.id = e.chunk_id "
+            "JOIN file f ON f.content_hash = c.content_hash "
+            "WHERE f.source_id = ? AND f.visibility = 'active'",
+            (sid,),
+        ).fetchone()[0]
+
+        results.append(
+            {
+                "source_id": sid,
+                "source_name": src["name"],
+                "last_scan": src["last_scan"],
+                "total_files": total,
+                "by_kind": by_kind,
+                "by_status": by_status,
+                "total_chunks": chunk_count,
+                "total_embeddings": embed_count,
+            }
+        )
+
+    return results
+
+
+def get_failed_files(
+    conn: sqlite3.Connection,
+    source_id: str | None = None,
+) -> list[dict]:
+    """List failed files with their error reasons from tasks."""
+    source_filter = ""
+    params: list = []
+    if source_id:
+        source_filter = "AND f.source_id = ?"
+        params = [source_id]
+
+    rows = conn.execute(
+        f"""SELECT f.path, f.source_id, f.file_kind, f.size, t.error
+            FROM file f
+            JOIN task t ON t.content_hash = f.content_hash AND t.status = 'failed'
+            WHERE f.visibility = 'active' {source_filter}
+            ORDER BY f.source_id, f.path""",
+        params,
+    ).fetchall()
+
+    return [
+        {
+            "path": r["path"],
+            "source_id": r["source_id"],
+            "file_kind": r["file_kind"],
+            "size": r["size"],
+            "error": r["error"],
+        }
+        for r in rows
+    ]

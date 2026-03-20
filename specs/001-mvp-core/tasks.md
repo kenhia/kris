@@ -158,13 +158,13 @@
 
 ### Tests for User Story 4
 
-- [ ] T059 [P] [US4] Write unit tests for status query functions (counts by source, kind, status; failed file listing) in `tests/unit/test_status.py`
+- [x] T059 [P] [US4] Write unit tests for status query functions (counts by source, kind, status; failed file listing) in `tests/unit/test_status.py`
 
 ### Implementation for User Story 4
 
-- [ ] T060 [US4] Implement status query functions in catalog: aggregate counts by source/kind/status, list failed files with errors in `src/kris/catalog/files.py` (extend)
-- [ ] T061 [US4] Implement `kris status` CLI command: Rich table output with per-source breakdown, `--json` support, `--source` filter in `src/kris/cli/status.py`
-- [ ] CT006 Run `just check`, commit Phase 6: "feat(001): US4 — status command"
+- [x] T060 [US4] Implement status query functions in catalog: aggregate counts by source/kind/status, list failed files with errors in `src/kris/catalog/files.py` (extend)
+- [x] T061 [US4] Implement `kris status` CLI command: Rich table output with per-source breakdown, `--json` support, `--source` filter in `src/kris/cli/status.py`
+- [x] CT006 Run `just check`, commit Phase 6: "feat(001): US4 — status command"
 
 **Checkpoint**: `kris status` provides observability into the index state.
 
