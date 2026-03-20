@@ -1,0 +1,222 @@
+"""Integration test for full index flow: scan → catalog → plan → extract → chunk → embed."""
+
+from __future__ import annotations
+
+import subprocess
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from kris.catalog.db import get_connection
+from kris.planner.planner import plan_pending_content
+from kris.processing.chunk import chunk_markdown, chunk_text, save_chunks
+from kris.processing.extract import extract_for_content
+from kris.scanner import find_scanner_binary
+
+
+@pytest.fixture
+def scanner_binary():
+    try:
+        return find_scanner_binary()
+    except Exception:
+        pytest.skip("kris-scanner binary not built")
+
+
+@pytest.fixture
+def index_env(tmp_path):
+    """Full index environment: database + sample files."""
+    db_path = tmp_path / "test.db"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    # Create files of various types
+    (data_dir / "readme.md").write_text(
+        "# Project\n\nOverview of the project.\n\n## Usage\n\nRun the thing.\n",
+        encoding="utf-8",
+    )
+    (data_dir / "hello.py").write_text(
+        'def greet(name: str) -> str:\n    return f"Hello, {name}!"\n',
+        encoding="utf-8",
+    )
+    (data_dir / "notes.txt").write_text(
+        "Some important notes.\n\nAnother paragraph here.\n",
+        encoding="utf-8",
+    )
+
+    conn = get_connection(db_path)
+    conn.execute(
+        "INSERT INTO source (id, name, source_type, base_path) VALUES (?, ?, ?, ?)",
+        ("src-1", "Test", "local", str(data_dir)),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"db_path": db_path, "data_dir": data_dir}
+
+
+class TestIndexFlow:
+    """End-to-end: scan → plan → extract → chunk pipeline."""
+
+    def test_scan_then_plan_creates_tasks(self, scanner_binary, index_env):
+        """After scanning, planning should create extract→chunk→embed tasks."""
+        subprocess.run(
+            [
+                str(scanner_binary),
+                "--db",
+                str(index_env["db_path"]),
+                "--source-id",
+                "src-1",
+                "--base-path",
+                str(index_env["data_dir"]),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+
+        conn = get_connection(index_env["db_path"])
+        planned = plan_pending_content(conn)
+        assert planned == 3  # 3 files → 3 content records
+
+        tasks = conn.execute("SELECT * FROM task ORDER BY priority").fetchall()
+        # 3 content records x 3 task types = 9 tasks
+        assert len(tasks) == 9
+
+        types = [t["task_type"] for t in tasks]
+        assert types.count("extract") == 3
+        assert types.count("chunk") == 3
+        assert types.count("embed") == 3
+        conn.close()
+
+    def test_extract_after_scan(self, scanner_binary, index_env):
+        """After scanning, extraction should read file content correctly."""
+        subprocess.run(
+            [
+                str(scanner_binary),
+                "--db",
+                str(index_env["db_path"]),
+                "--source-id",
+                "src-1",
+                "--base-path",
+                str(index_env["data_dir"]),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+
+        conn = get_connection(index_env["db_path"])
+        content_rows = conn.execute("SELECT content_hash FROM content").fetchall()
+        assert len(content_rows) == 3
+
+        for row in content_rows:
+            result = extract_for_content(conn, row["content_hash"], index_env["data_dir"])
+            assert result.size > 0
+            assert result.encoding == "utf-8"
+        conn.close()
+
+    def test_chunk_after_extract(self, scanner_binary, index_env):
+        """After scanning and extracting, chunking should produce chunks in the DB."""
+        subprocess.run(
+            [
+                str(scanner_binary),
+                "--db",
+                str(index_env["db_path"]),
+                "--source-id",
+                "src-1",
+                "--base-path",
+                str(index_env["data_dir"]),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+
+        conn = get_connection(index_env["db_path"])
+        content_rows = conn.execute(
+            "SELECT c.content_hash, f.file_kind FROM content c "
+            "JOIN file f ON f.content_hash = c.content_hash",
+        ).fetchall()
+
+        total_chunks = 0
+        for row in content_rows:
+            result = extract_for_content(conn, row["content_hash"], index_env["data_dir"])
+            if row["file_kind"] == "markdown":
+                chunks = chunk_markdown(result.text, row["content_hash"])
+            else:
+                chunks = chunk_text(result.text, row["content_hash"])
+            saved = save_chunks(conn, chunks)
+            total_chunks += saved
+
+        assert total_chunks > 0
+        db_chunks = conn.execute("SELECT COUNT(*) FROM chunk").fetchone()[0]
+        assert db_chunks == total_chunks
+        conn.close()
+
+    def test_full_flow_with_mocked_embed(self, scanner_binary, index_env):
+        """Full flow scan→plan→worker with mocked embedding model."""
+        from kris.processing.worker import run_worker
+
+        # Scan
+        subprocess.run(
+            [
+                str(scanner_binary),
+                "--db",
+                str(index_env["db_path"]),
+                "--source-id",
+                "src-1",
+                "--base-path",
+                str(index_env["data_dir"]),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+
+        conn = get_connection(index_env["db_path"])
+
+        # Plan
+        planned = plan_pending_content(conn)
+        assert planned == 3
+
+        # Mock model infrastructure for embed tasks
+        mock_model = MagicMock()
+        mock_model.encode.return_value = [[0.1] * 384]  # fake embeddings
+        mock_manager = MagicMock()
+        mock_manager.load.return_value = mock_model
+
+        mock_registry = MagicMock()
+        mock_info = MagicMock()
+        mock_info.dimensions = 384
+        mock_registry.get.return_value = mock_info
+
+        qdrant_path = index_env["data_dir"].parent / "qdrant"
+
+        # Patch embed_chunks to avoid real Qdrant/model deps
+        with patch("kris.processing.worker.embed_chunks", return_value=1):
+            completed, failed = run_worker(
+                conn,
+                index_env["data_dir"],
+                qdrant_path,
+                mock_manager,
+                mock_registry,
+            )
+
+        assert failed == 0
+        # 9 tasks total: 3 extract + 3 chunk + 3 embed
+        assert completed == 9
+
+        # Verify all tasks completed
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM task WHERE status != 'completed'",
+        ).fetchone()[0]
+        assert remaining == 0
+        conn.close()

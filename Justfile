@@ -27,7 +27,7 @@ fmt-check:
 lint:
     cd scanner && cargo clippy -- -D warnings
     uv run ruff check .
-    uv run ty check
+    uv run ty check src/ tests/
 
 # Clean build artifacts
 clean:

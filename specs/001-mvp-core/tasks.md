@@ -64,37 +64,37 @@
 
 ### Tests for User Story 1
 
-- [ ] T021 [P] [US1] Write unit tests for Rust scanner: directory walk, file classification, SHA-256 hashing, SQLite writes in `scanner/src/tests/` (Rust `#[cfg(test)]` modules)
-- [ ] T022 [P] [US1] Write unit tests for text extraction (text, code, markdown, config files with encoding detection) in `tests/unit/test_extract.py`
-- [ ] T023 [P] [US1] Write unit tests for chunking strategies (text semantic split, code tree-sitter AST split, markdown section split) in `tests/unit/test_chunk.py`
-- [ ] T024 [P] [US1] Write unit tests for task planner (pending files → task DAG generation, model affinity ordering) in `tests/unit/test_planner.py`
-- [ ] T025 [P] [US1] Write integration test for full index flow (scan → catalog → plan → extract → chunk → embed → Qdrant) in `tests/integration/test_index_flow.py`
+- [x] T021 [P] [US1] Write unit tests for Rust scanner: directory walk, file classification, SHA-256 hashing, SQLite writes in `scanner/src/tests/` (Rust `#[cfg(test)]` modules)
+- [x] T022 [P] [US1] Write unit tests for text extraction (text, code, markdown, config files with encoding detection) in `tests/unit/test_extract.py`
+- [x] T023 [P] [US1] Write unit tests for chunking strategies (text semantic split, code tree-sitter AST split, markdown section split) in `tests/unit/test_chunk.py`
+- [x] T024 [P] [US1] Write unit tests for task planner (pending files → task DAG generation, model affinity ordering) in `tests/unit/test_planner.py`
+- [x] T025 [P] [US1] Write integration test for full index flow (scan → catalog → plan → extract → chunk → embed → Qdrant) in `tests/integration/test_index_flow.py`
 
 ### Implementation for User Story 1
 
 **Rust Scanner:**
 
-- [ ] T026 [US1] Implement directory traversal with `walkdir`, exclude pattern support, symlink handling, and symlink cycle detection in `scanner/src/walk.rs`
-- [ ] T027 [P] [US1] Implement FileKind classification by extension + MIME heuristics in `scanner/src/classify.rs`
-- [ ] T028 [P] [US1] Implement SHA-256 content hashing with streaming reader for large files in `scanner/src/hash.rs`
-- [ ] T029 [US1] Implement SQLite catalog writes (upsert file records, insert/update content records, set processing_status, detect hash mismatch between scan and extraction for re-queue) in `scanner/src/catalog.rs`
-- [ ] T030 [US1] Implement scanner main: parse CLI args (source config path, source ID), orchestrate walk → classify → hash → catalog in `scanner/src/main.rs` and `scanner/src/lib.rs`
-- [ ] T031 [US1] Write integration test: run scanner binary against a temp directory, verify SQLite contents in `tests/integration/test_scanner.py`
+- [x] T026 [US1] Implement directory traversal with `walkdir`, exclude pattern support, symlink handling, and symlink cycle detection in `scanner/src/walk.rs`
+- [x] T027 [P] [US1] Implement FileKind classification by extension + MIME heuristics in `scanner/src/classify.rs`
+- [x] T028 [P] [US1] Implement SHA-256 content hashing with streaming reader for large files in `scanner/src/hash.rs`
+- [x] T029 [US1] Implement SQLite catalog writes (upsert file records, insert/update content records, set processing_status, detect hash mismatch between scan and extraction for re-queue) in `scanner/src/catalog.rs`
+- [x] T030 [US1] Implement scanner main: parse CLI args (source config path, source ID), orchestrate walk → classify → hash → catalog in `scanner/src/main.rs` and `scanner/src/lib.rs`
+- [x] T031 [US1] Write integration test: run scanner binary against a temp directory, verify SQLite contents in `tests/integration/test_scanner.py`
 
 **Python Processing Pipeline:**
 
-- [ ] T032 [US1] Implement scanner runner: invoke Rust scanner binary as subprocess for a single configured source, pass config, capture output/errors in `src/kris/scanner/runner.py` (multi-source iteration added in US3/T057)
-- [ ] T033 [US1] Implement task planner: query pending files from catalog → generate extract/chunk/embed task DAGs with model affinity hints, ordering tasks to minimize model load/unload cycles (FR-017) in `src/kris/planner/planner.py`
-- [ ] T034 [US1] Implement text extraction pipeline (read file, detect encoding with charset-normalizer, return raw text) in `src/kris/processing/extract.py`
-- [ ] T035 [US1] Implement chunking strategies: text/markdown semantic splitting (paragraph/section boundaries) in `src/kris/processing/chunk.py`
-- [ ] T036 [US1] Implement code-aware chunking with `py-tree-sitter` (function/class level AST nodes) in `src/kris/processing/chunk.py`
-- [ ] T037 [US1] Implement model registry: load model definitions from config, query by type/id in `src/kris/models/registry.py`
-- [ ] T038 [US1] Implement model manager: VRAM-aware loading/unloading of sentence-transformers embedding model in `src/kris/models/manager.py`
-- [ ] T039 [US1] Implement embedding pipeline: load model → encode chunks → write to Qdrant (embedded mode) + write embedding records to SQLite in `src/kris/processing/embed.py`
-- [ ] T040 [US1] Implement task worker loop: pull tasks by model affinity (FR-017) → execute pipeline step → mark complete/failed → retry logic including Qdrant connection failure handling in `src/kris/processing/worker.py`
-- [ ] T041 [US1] Implement `kris index` CLI command: orchestrate scanner run → task planning → worker execution → summary output in `src/kris/cli/index.py`
-- [ ] T042 [US1] Implement progress indicators (Rich progress bar) for scan and processing steps in `src/kris/cli/index.py`
-- [ ] CT003 Run `just check`, commit Phase 3: "feat(001): US1 — scan, index, extract, chunk, embed"
+- [x] T032 [US1] Implement scanner runner: invoke Rust scanner binary as subprocess for a single configured source, pass config, capture output/errors in `src/kris/scanner/runner.py` (multi-source iteration added in US3/T057)
+- [x] T033 [US1] Implement task planner: query pending files from catalog → generate extract/chunk/embed task DAGs with model affinity hints, ordering tasks to minimize model load/unload cycles (FR-017) in `src/kris/planner/planner.py`
+- [x] T034 [US1] Implement text extraction pipeline (read file, detect encoding with charset-normalizer, return raw text) in `src/kris/processing/extract.py`
+- [x] T035 [US1] Implement chunking strategies: text/markdown semantic splitting (paragraph/section boundaries) in `src/kris/processing/chunk.py`
+- [x] T036 [US1] Implement code-aware chunking with `py-tree-sitter` (function/class level AST nodes) in `src/kris/processing/chunk.py`
+- [x] T037 [US1] Implement model registry: load model definitions from config, query by type/id in `src/kris/models/registry.py`
+- [x] T038 [US1] Implement model manager: VRAM-aware loading/unloading of sentence-transformers embedding model in `src/kris/models/manager.py`
+- [x] T039 [US1] Implement embedding pipeline: load model → encode chunks → write to Qdrant (embedded mode) + write embedding records to SQLite in `src/kris/processing/embed.py`
+- [x] T040 [US1] Implement task worker loop: pull tasks by model affinity (FR-017) → execute pipeline step → mark complete/failed → retry logic including Qdrant connection failure handling in `src/kris/processing/worker.py`
+- [x] T041 [US1] Implement `kris index` CLI command: orchestrate scanner run → task planning → worker execution → summary output in `src/kris/cli/index.py`
+- [x] T042 [US1] Implement progress indicators (Rich progress bar) for scan and processing steps in `src/kris/cli/index.py`
+- [x] CT003 Run `just check`, commit Phase 3: "feat(001): US1 — scan, index, extract, chunk, embed"
 
 **Checkpoint**: `kris index` scans a directory, catalogs files, extracts text, chunks, embeds, and stores vectors in Qdrant. US1 is fully functional.
 
