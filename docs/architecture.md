@@ -400,9 +400,8 @@ XDG-compliant configuration following krag's established pattern:
 | Location | Contents |
 |----------|----------|
 | `$XDG_CONFIG_HOME/kris/config.toml` | Sources, models, pipeline settings |
+| `$XDG_DATA_HOME/kris/` | SQLite catalog, logs, blob store |
 | `$XDG_CACHE_HOME/kris/` | Downloaded models, Qdrant data |
-| `$XDG_STATE_HOME/kris/` | SQLite databases, logs, PID files |
-| `$XDG_DATA_HOME/kris/` | Blob store (thumbnails, cached extractions) |
 
 ### Observability
 
@@ -435,7 +434,8 @@ XDG-compliant configuration following krag's established pattern:
 | Scanner ↔ Core IPC | SQLite | Both Rust and Python have battle-tested SQLite libraries; atomic, no serialization format to maintain |
 | Task planner / Queue | Python | Tight integration with ML ecosystem; simpler than cross-language orchestration |
 | Processing workers | Python | ML/LLM ecosystem (transformers, sentence-transformers, llama-cpp) |
-| API service | Python (FastAPI) | Proven pattern from krag, async support |
+| Code chunking | tree-sitter | AST-aware chunking for source code files |
+| API service (Phase 2) | Python (FastAPI) | Proven pattern from krag, async support |
 | CLI | Python (Typer + Rich) | Proven pattern from krag |
 | Vector store | Qdrant | Proven in krag, named vectors, filtered search |
 | Metadata store | SQLite | Simple, reliable, no server process. Shared between Rust scanner and Python core. |
@@ -496,7 +496,7 @@ graph TB
 ### MVP Delivers
 
 - Scan local directories (including NAS mount paths), detect new/changed files
-- Per-path scan schedules with configurable priority
+- Per-path scan schedule configuration schema (schedule execution deferred to Phase 2)
 - Extract and chunk text, code, and markdown files
 - Embed chunks with a single embedding model
 - Store vectors in Qdrant with file metadata

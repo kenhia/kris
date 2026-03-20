@@ -220,17 +220,17 @@
 
 **Purpose**: Finalize MVP usability, documentation, and logging
 
-- [ ] T074 [P] Implement structured, leveled, rotating log file support in `src/kris/config/schema.py` and `src/kris/cli/app.py`
-- [ ] T075 [P] Ensure all CLI commands support `--json` output per contract in `src/kris/cli/app.py`
-- [ ] T076 [P] Ensure Rich output respects `NO_COLOR` and terminal width in `src/kris/cli/app.py`
-- [ ] T077 [P] Create `docs/setup.md` — installation and setup guide
-- [ ] T078 [P] Create `docs/usage.md` — usage guide with examples
-- [ ] T079 Run `specs/001-mvp-core/quickstart.md` end-to-end validation: fresh install → init → index → query → status; time the end-to-end experience against SC-007 10-minute goal
-- [ ] T080 [P] Run performance benchmarks against SC-001 (1000 files <60s), SC-002 (re-index <30s), SC-003 (query <30s), SC-008 (100k+ files stability); document results and review with user before attempting optimization
-- [ ] T081 [P] Review and update `docs/architecture.md` and `docs/clarifications-needed.md` if any plan/implementation decisions diverge from current documentation
-- [ ] T082 Create `docs/specification.md` — combined canonical specification per constitution §I (SDD)
-- [ ] T083 Final `just check` pass: ruff format --check, ruff check, ty check, pytest, cargo fmt --check, cargo clippy, cargo test
-- [ ] CT009 Run `just check`, commit Phase 9: "feat(001): polish — docs, benchmarks, specification, final QA"
+- [x] T074 [P] Implement structured, leveled, rotating log file support in `src/kris/config/schema.py` and `src/kris/cli/app.py`
+- [x] T075 [P] Ensure all CLI commands support `--json` output per contract in `src/kris/cli/app.py`
+- [x] T076 [P] Ensure Rich output respects `NO_COLOR` and terminal width in `src/kris/cli/app.py`
+- [x] T077 [P] Create `docs/setup.md` — installation and setup guide
+- [x] T078 [P] Create `docs/usage.md` — usage guide with examples
+- [x] T079 Run `specs/001-mvp-core/quickstart.md` end-to-end validation: fresh install → init → index → query → status; time the end-to-end experience against SC-007 10-minute goal
+- [x] T080 [P] Run performance benchmarks against SC-001 (1000 files <60s), SC-002 (re-index <30s), SC-003 (query <30s), SC-008 (100k+ files stability); document results and review with user before attempting optimization
+- [x] T081 [P] Review and update `docs/architecture.md` and `docs/clarifications-needed.md` if any plan/implementation decisions diverge from current documentation
+- [x] T082 Create `docs/specification.md` — combined canonical specification per constitution §I (SDD)
+- [x] T083 Final `just check` pass: ruff format --check, ruff check, ty check, pytest, cargo fmt --check, cargo clippy, cargo test
+- [x] CT009 Run `just check`, commit Phase 9: "feat(001): polish — docs, benchmarks, specification, final QA"
 
 ---
 
