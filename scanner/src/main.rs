@@ -25,6 +25,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     follow_symlinks: bool,
 
+    /// Skip SHA-256 hashing (faster exploration scans)
+    #[arg(long, default_value_t = false)]
+    skip_hash: bool,
+
     /// Output as JSON
     #[arg(long, default_value_t = false)]
     json: bool,
@@ -39,6 +43,7 @@ fn main() {
         &args.base_path,
         &args.exclude,
         args.follow_symlinks,
+        args.skip_hash,
     ) {
         Ok(result) => {
             if args.json {

@@ -25,6 +25,7 @@ pub fn scan(
     base_path: &Path,
     exclude_patterns: &[String],
     follow_symlinks: bool,
+    skip_hash: bool,
 ) -> Result<ScanResult, Box<dyn std::error::Error>> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch(
@@ -55,12 +56,16 @@ pub fn scan(
             }
         };
 
-        let content_hash = match hash::sha256_file(path) {
-            Ok(h) => h,
-            Err(e) => {
-                eprintln!("hash error for {}: {}", path.display(), e);
-                errors += 1;
-                continue;
+        let content_hash = if skip_hash {
+            "skipped".to_string()
+        } else {
+            match hash::sha256_file(path) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("hash error for {}: {}", path.display(), e);
+                    errors += 1;
+                    continue;
+                }
             }
         };
 
