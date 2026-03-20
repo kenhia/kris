@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kris.catalog.content import get_duplicate_groups
 from kris.catalog.db import get_connection
 from kris.planner.planner import plan_pending_content
 from kris.processing.chunk import chunk_markdown, chunk_text, save_chunks
@@ -219,4 +221,68 @@ class TestIndexFlow:
             "SELECT COUNT(*) FROM task WHERE status != 'completed'",
         ).fetchone()[0]
         assert remaining == 0
+        conn.close()
+
+
+class TestDedupFlow:
+    """Integration: duplicate files across sources share content records and artifacts."""
+
+    def test_duplicate_files_share_content(self, scanner_binary, index_env):
+        """Scanning identical files in two source dirs produces shared content records."""
+        data_dir = index_env["data_dir"]
+        data_dir_2 = data_dir.parent / "data2"
+        # Copy entire tree to second source
+        shutil.copytree(data_dir, data_dir_2)
+
+        db_path = index_env["db_path"]
+        conn = get_connection(db_path)
+        conn.execute(
+            "INSERT INTO source (id, name, source_type, base_path) VALUES (?, ?, ?, ?)",
+            ("src-2", "Test 2", "local", str(data_dir_2)),
+        )
+        conn.commit()
+        conn.close()
+
+        # Scan both sources
+        for src_id, base in [("src-1", data_dir), ("src-2", data_dir_2)]:
+            subprocess.run(
+                [
+                    str(scanner_binary),
+                    "--db",
+                    str(db_path),
+                    "--source-id",
+                    src_id,
+                    "--base-path",
+                    str(base),
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+
+        conn = get_connection(db_path)
+
+        # Files are doubled (3 per source)
+        file_count = conn.execute("SELECT COUNT(*) FROM file").fetchone()[0]
+        assert file_count == 6
+
+        # Content records should NOT be doubled — INSERT OR IGNORE deduplicates
+        content_count = conn.execute("SELECT COUNT(*) FROM content").fetchone()[0]
+        assert content_count == 3  # only 3 unique content hashes
+
+        # Planning should only create tasks once per content_hash
+        planned = plan_pending_content(conn)
+        assert planned == 3  # not 6
+
+        task_count = conn.execute("SELECT COUNT(*) FROM task").fetchone()[0]
+        assert task_count == 9  # 3 content x 3 task types
+
+        # Duplicate groups should show 3 groups of 2
+        groups = get_duplicate_groups(conn)
+        assert len(groups) == 3
+        for g in groups:
+            assert g["count"] == 2
+
         conn.close()

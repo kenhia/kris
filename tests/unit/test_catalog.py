@@ -7,6 +7,7 @@ import pytest
 from kris.catalog.content import (
     get_content,
     get_content_by_status,
+    get_duplicate_groups,
     insert_if_not_exists,
     update_status,
 )
@@ -282,3 +283,85 @@ class TestTaskCRUD:
         tasks = get_tasks_by_status(db, "queued")
         assert tasks[0].id == "tp-high"
         assert tasks[1].id == "tp-low"
+
+
+class TestDuplicateDetection:
+    """Tests for content-addressed dedup: duplicate group queries."""
+
+    def test_no_duplicates_returns_empty(self, db, sample_source):
+        """No duplicate groups when all files have unique hashes."""
+        insert_file(db, _make_file(sample_source, path="/a.txt", content_hash="hash_a"))
+        insert_file(db, _make_file(sample_source, path="/b.txt", content_hash="hash_b"))
+        groups = get_duplicate_groups(db)
+        assert groups == []
+
+    def test_finds_duplicate_group(self, db, sample_source):
+        """Files sharing a content_hash form a duplicate group."""
+        insert_file(db, _make_file(sample_source, path="/a.txt", content_hash="dup_hash"))
+        insert_file(db, _make_file(sample_source, path="/b.txt", content_hash="dup_hash"))
+        groups = get_duplicate_groups(db)
+        assert len(groups) == 1
+        assert groups[0]["content_hash"] == "dup_hash"
+        assert groups[0]["count"] == 2
+        paths = {f["path"] for f in groups[0]["files"]}
+        assert paths == {"/a.txt", "/b.txt"}
+
+    def test_multiple_duplicate_groups(self, db, sample_source):
+        """Multiple groups of duplicates are returned."""
+        insert_file(db, _make_file(sample_source, path="/a1.txt", content_hash="dup1"))
+        insert_file(db, _make_file(sample_source, path="/a2.txt", content_hash="dup1"))
+        insert_file(db, _make_file(sample_source, path="/b1.txt", content_hash="dup2"))
+        insert_file(db, _make_file(sample_source, path="/b2.txt", content_hash="dup2"))
+        insert_file(db, _make_file(sample_source, path="/b3.txt", content_hash="dup2"))
+        insert_file(db, _make_file(sample_source, path="/c.txt", content_hash="unique"))
+        groups = get_duplicate_groups(db)
+        assert len(groups) == 2
+        # dup2 has 3 files, dup1 has 2
+        counts = sorted([g["count"] for g in groups])
+        assert counts == [2, 3]
+
+    def test_source_filter(self, db, sample_source):
+        """Duplicate groups can be filtered by source."""
+        db.execute(
+            "INSERT INTO source (id, name, source_type, base_path) VALUES (?, ?, ?, ?)",
+            ("src-2", "Source 2", "local", "/tmp/src2"),
+        )
+        db.commit()
+        insert_file(db, _make_file(sample_source, path="/a.txt", content_hash="dup_hash"))
+        insert_file(db, _make_file("src-2", path="/a.txt", content_hash="dup_hash"))
+        # Filter to only sample_source — the dup crosses sources so shouldn't appear
+        groups = get_duplicate_groups(db, source_id=sample_source)
+        assert len(groups) == 0
+
+    def test_cross_source_duplicates(self, db, sample_source):
+        """Duplicates across sources are found without source filter."""
+        db.execute(
+            "INSERT INTO source (id, name, source_type, base_path) VALUES (?, ?, ?, ?)",
+            ("src-2", "Source 2", "local", "/tmp/src2"),
+        )
+        db.commit()
+        insert_file(db, _make_file(sample_source, path="/a.txt", content_hash="dup_hash"))
+        insert_file(db, _make_file("src-2", path="/a.txt", content_hash="dup_hash"))
+        groups = get_duplicate_groups(db)
+        assert len(groups) == 1
+        sources = {f["source_id"] for f in groups[0]["files"]}
+        assert sources == {sample_source, "src-2"}
+
+    def test_excludes_missing_files(self, db, sample_source):
+        """Missing files are excluded from duplicate groups."""
+        f1 = insert_file(db, _make_file(sample_source, path="/a.txt", content_hash="dup_hash"))
+        insert_file(db, _make_file(sample_source, path="/b.txt", content_hash="dup_hash"))
+        update_file_visibility(db, f1.id, "missing", "2026-01-01T00:00:00")
+        groups = get_duplicate_groups(db)
+        # Only 1 active file left with that hash, so no dup group
+        assert len(groups) == 0
+
+    def test_min_size_filter(self, db, sample_source):
+        """Duplicate groups can be filtered by minimum file size."""
+        insert_file(db, _make_file(sample_source, path="/a.txt", content_hash="small", size=50))
+        insert_file(db, _make_file(sample_source, path="/b.txt", content_hash="small", size=50))
+        insert_file(db, _make_file(sample_source, path="/c.txt", content_hash="big", size=2000))
+        insert_file(db, _make_file(sample_source, path="/d.txt", content_hash="big", size=2000))
+        groups = get_duplicate_groups(db, min_size=1000)
+        assert len(groups) == 1
+        assert groups[0]["content_hash"] == "big"

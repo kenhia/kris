@@ -178,15 +178,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T062 [P] [US5] Write unit tests for dedup logic: content_hash sharing, duplicate group queries in `tests/unit/test_catalog.py` (extend)
-- [ ] T063 [P] [US5] Write integration test: index duplicate files across sources, verify shared artifacts in `tests/integration/test_index_flow.py` (extend)
+- [x] T062 [P] [US5] Write unit tests for dedup logic: content_hash sharing, duplicate group queries in `tests/unit/test_catalog.py` (extend)
+- [x] T063 [P] [US5] Write integration test: index duplicate files across sources, verify shared artifacts in `tests/integration/test_index_flow.py` (extend)
 
 ### Implementation for User Story 5
 
-- [ ] T064 [US5] Implement duplicate detection query: group files by content_hash where count > 1, with source/path details in `src/kris/catalog/content.py` (extend)
-- [ ] T065 [US5] Implement `kris duplicates` CLI command: Rich table output with groups, `--source` and `--min-size` filters in `src/kris/cli/duplicates.py`
-- [ ] T066 [US5] Verify that the index pipeline correctly skips reprocessing when content_hash already has chunks/embeddings (dedup path in planner) in `src/kris/planner/planner.py` (verify/fix)
-- [ ] CT007 Run `just check`, commit Phase 7: "feat(001): US5 — content-addressed dedup, duplicates command"
+- [x] T064 [US5] Implement duplicate detection query: group files by content_hash where count > 1, with source/path details in `src/kris/catalog/content.py` (extend)
+- [x] T065 [US5] Implement `kris duplicates` CLI command: Rich table output with groups, `--source` and `--min-size` filters in `src/kris/cli/duplicates.py`
+- [x] T066 [US5] Verify that the index pipeline correctly skips reprocessing when content_hash already has chunks/embeddings (dedup path in planner) in `src/kris/planner/planner.py` (verify/fix)
+- [x] CT007 Run `just check`, commit Phase 7: "feat(001): US5 — content-addressed dedup, duplicates command"
 
 **Checkpoint**: Dedup is verified end-to-end. `kris duplicates` lists duplicate groups.
 
