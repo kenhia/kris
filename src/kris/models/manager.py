@@ -66,3 +66,28 @@ class ModelManager:
 
     def is_loaded(self, model_id: str) -> bool:
         return self._loaded_model_id == model_id
+
+    def load_llm(self, info: ModelInfo) -> Any:
+        """Load a llama-cpp-python LLM model.
+
+        Hot-swaps with embedding model if one is loaded — only one model
+        at a time to stay within VRAM budget.
+        """
+        if self._loaded_model_id == info.model_id:
+            return self._loaded_model
+
+        self.unload()
+
+        logger.info("Loading LLM: %s", info.name)
+        from llama_cpp import Llama
+
+        model = Llama(
+            model_path=info.path_or_repo,
+            n_ctx=4096,
+            n_gpu_layers=-1,  # offload all layers to GPU
+            verbose=False,
+        )
+        self._loaded_model = model
+        self._loaded_model_id = info.model_id
+        self._loaded_info = info
+        return model

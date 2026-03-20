@@ -108,19 +108,19 @@
 
 ### Tests for User Story 2
 
-- [ ] T043 [P] [US2] Write unit tests for retriever: Qdrant vector search, metadata enrichment from SQLite, result ranking in `tests/unit/test_retriever.py`
-- [ ] T044 [P] [US2] Write unit tests for synthesizer: prompt construction, source citation formatting, no-results handling in `tests/unit/test_synthesizer.py`
-- [ ] T045 [P] [US2] Write integration test for full query flow (query → embed → search Qdrant → enrich → synthesize → format) in `tests/integration/test_query_flow.py`
+- [x] T043 [P] [US2] Write unit tests for retriever: Qdrant vector search, metadata enrichment from SQLite, result ranking in `tests/unit/test_retriever.py`
+- [x] T044 [P] [US2] Write unit tests for synthesizer: prompt construction, source citation formatting, no-results handling in `tests/unit/test_synthesizer.py`
+- [x] T045 [P] [US2] Write integration test for full query flow (query → embed → search Qdrant → enrich → synthesize → format) in `tests/integration/test_query_flow.py`
 
 ### Implementation for User Story 2
 
-- [ ] T046 [US2] Implement retriever: embed query with same model → Qdrant similarity search → join with SQLite for file metadata (path, source, kind) in `src/kris/query/retriever.py`
-- [ ] T047 [US2] Implement synthesizer: build LLM prompt with retrieved chunks as context → call llama-cpp-python → format answer with source citations in `src/kris/query/synthesizer.py`
-- [ ] T048 [US2] Implement query engine: orchestrate retriever + synthesizer, handle no-results case, support retrieval-only mode in `src/kris/query/engine.py`
-- [ ] T049 [US2] Extend model manager to support LLM loading/unloading (hot-swap with embedding model) in `src/kris/models/manager.py`
-- [ ] T050 [US2] Implement `kris query` CLI command: parse question + flags (--show-sources, --top-k, --source, --kind) → query engine → Rich-formatted output in `src/kris/cli/query.py`
-- [ ] T051 [US2] Implement `kris retrieve` CLI command: retrieval-only mode (chunks without LLM synthesis) in `src/kris/cli/query.py`
-- [ ] CT004 Run `just check`, commit Phase 4: "feat(001): US2 — query, retrieve, LLM synthesis"
+- [x] T046 [US2] Implement retriever: embed query with same model → Qdrant similarity search → join with SQLite for file metadata (path, source, kind) in `src/kris/query/retriever.py`
+- [x] T047 [US2] Implement synthesizer: build LLM prompt with retrieved chunks as context → call llama-cpp-python → format answer with source citations in `src/kris/query/synthesizer.py`
+- [x] T048 [US2] Implement query engine: orchestrate retriever + synthesizer, handle no-results case, support retrieval-only mode in `src/kris/query/engine.py`
+- [x] T049 [US2] Extend model manager to support LLM loading/unloading (hot-swap with embedding model) in `src/kris/models/manager.py`
+- [x] T050 [US2] Implement `kris query` CLI command: parse question + flags (--show-sources, --top-k, --source, --kind) → query engine → Rich-formatted output in `src/kris/cli/query.py`
+- [x] T051 [US2] Implement `kris retrieve` CLI command: retrieval-only mode (chunks without LLM synthesis) in `src/kris/cli/query.py`
+- [x] CT004 Run `just check`, commit Phase 4: "feat(001): US2 — query, retrieve, LLM synthesis"
 
 **Checkpoint**: `kris query` and `kris retrieve` return answers with source citations. US2 is fully functional. Combined with US1, this is a complete vertical slice.
 
