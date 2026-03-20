@@ -242,8 +242,19 @@
 - [x] T085 [P] Refactor `src/kris/processing/embed.py`: accept a `QdrantClient` parameter instead of instantiating per call
 - [x] T086 [P] Update `src/kris/processing/worker.py`: create `QdrantClient` once in `run_worker()`, pass to `execute_task()` and `embed_chunks()`
 - [x] T087 [P] Update callers of `embed_chunks()` and `delete_points()` to pass/use shared client (including tests)
-- [ ] T088 Verify: run `kris index` on a test directory, confirm GPU compute visible in `nvtop`, measure throughput improvement
+- [x] T088 Verify: run `kris index` on a test directory, confirm GPU compute visible in `nvtop`, measure throughput improvement
 - [x] CT010 Run `just check`, commit Phase 10: "perf(001): GPU embedding — eliminate per-call QdrantClient overhead"
+
+---
+
+## Phase 11: GPU Query/LLM Inference (B007)
+
+**Purpose**: Ensure LLM synthesis uses GPU during `kris query`
+
+- [x] T089 Diagnose: check if `llama-cpp-python` has CUDA support, log backend at LLM load time in `src/kris/models/manager.py`
+- [x] T090 [P] If CPU-only, reinstall `llama-cpp-python` with CUDA (`CMAKE_ARGS="-DGGML_CUDA=on"`)
+- [x] T091 Verify: run `kris query`, confirm GPU compute visible in `nvtop`
+- [x] CT011 Run `just check`, commit Phase 11: "perf(001): GPU LLM inference for query pipeline"
 
 ---
 

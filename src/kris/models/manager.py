@@ -88,6 +88,11 @@ class ModelManager:
             n_gpu_layers=-1,  # offload all layers to GPU
             verbose=False,
         )
+
+        # Log backend info for diagnostics
+        gpu_layers = model.model_params.n_gpu_layers
+        logger.info("LLM loaded: n_gpu_layers=%d, n_ctx=%d", gpu_layers, model.n_ctx())
+
         self._loaded_model = model
         self._loaded_model_id = info.model_id
         self._loaded_info = info

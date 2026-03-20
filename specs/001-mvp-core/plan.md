@@ -285,6 +285,18 @@ compute is not the issue — per-call overhead is.
 3. Batch `model.encode()` across content hashes for GPU throughput
 4. Verify GPU utilization with `nvtop` during a re-embed run
 
+### Phase G — GPU Query/LLM Inference (B007)
+
+Ensure `llama-cpp-python` uses GPU for LLM synthesis during
+`kris query`. The model manager already passes `n_gpu_layers=-1`
+but the package may have been installed without CUDA support.
+
+**Components**:
+1. Diagnose whether `llama-cpp-python` has CUDA bindings
+2. Reinstall with CUDA if needed
+3. Log the LLM backend/device at load time
+4. Verify GPU utilization with `nvtop` during a query
+
 ## Complexity Tracking
 
 No constitution violations. All design choices follow the simplest

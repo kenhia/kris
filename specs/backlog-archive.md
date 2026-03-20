@@ -15,3 +15,13 @@ Items moved from backlog into active sprints or completed.
 **Resolution**: Incorporated into `specs/001-mvp-core` as Phase 10 (tasks T084-T088, CT010). Key fix: create `QdrantClient` once in `run_worker()` and pass through.
 
 **Moved**: 2026-03-20
+
+---
+
+## B007 — Query pipeline not using GPU for LLM inference (moved to 001-mvp-core Phase 11)
+
+**Origin**: First `kris query` run — response quality was good but LLM inference appeared CPU-bound. `nvtop` showed no GPU compute during synthesis. The model manager specifies `n_gpu_layers=-1` but `llama-cpp-python` may have been installed without CUDA bindings, causing silent fallback to CPU.
+
+**Resolution**: Incorporated into `specs/001-mvp-core` as Phase 11 (tasks T089-T091, CT011). Key actions: diagnose CUDA bindings, reinstall with CUDA if needed, log backend at load time.
+
+**Moved**: 2026-03-20

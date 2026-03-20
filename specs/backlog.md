@@ -2,6 +2,12 @@
 
 Items captured during MVP development for future consideration.
 
+## Agent Instructions
+
+**Highest Bxxx Entry**: 9
+
+Use the `backlog-manage` skill for all backlog operations. B-numbers are never reused.
+
 ---
 
 ## B001 — Parallelize Rust scanner
@@ -135,3 +141,46 @@ This is a known issue — `position_ids` was removed from newer HuggingFace Bert
 5. **Only if no corrective fix exists**, consider targeted suppression — a scoped `warnings.filterwarnings` matching only this specific message, not a blanket silencing.
 
 **Priority**: Low — cosmetic / stderr noise. The warning is harmless but looks alarming to users.
+
+---
+
+## B008 — Qdrant local mode warning for large collections
+
+**Origin**: During `kris query`, Qdrant emits:
+```
+UserWarning: Local mode is not recommended for collections with more than 20,000 points.
+Collection <kris_chunks> contains 20343 points.
+Consider using Qdrant in Docker or Qdrant Cloud for better performance with large datasets.
+```
+
+**Context**: kris uses Qdrant in embedded/local mode (`QdrantClient(path=...)`). The collection has exceeded 20K points after indexing two source repos. As more sources are added, this will grow significantly (potentially 100K+ points).
+
+**Investigation needed**:
+1. Research whether this warning indicates actual performance degradation or is just advisory
+2. Benchmark query latency at current scale — is it acceptable?
+3. Evaluate options:
+   - **Suppress the warning** if performance is acceptable (targeted `warnings.filterwarnings`)
+   - **Switch to Qdrant server mode** (Docker container) for production use, keeping embedded for tests
+   - **Make the backend configurable** — embedded for small installs, server mode for large collections
+4. This may tie into the architecture's planned evolution (Qdrant is already the chosen vector store)
+
+**Priority**: Medium — functional but noisy; will become a real performance question at scale.
+
+---
+
+## B009 — llama.cpp n_ctx_per_seq warning
+
+**Origin**: During `kris query`, llama.cpp emits:
+```
+llama_context: n_ctx_per_seq (4096) < n_ctx_train (131072) — the full capacity of the model will not be utilized
+```
+
+**Context**: `src/kris/models/manager.py` hard-codes `n_ctx=4096` in `load_llm()`. The loaded model was trained with 131K context. 4096 is a reasonable default for VRAM conservation, but the warning is noisy.
+
+**Investigation needed**:
+1. Determine whether 4096 tokens is sufficient for typical query contexts (retrieved chunks + prompt template). If typical prompts are well under 4K, this is fine.
+2. Consider making `n_ctx` configurable in `models.llm` config section rather than hard-coded.
+3. Evaluate whether the warning can be suppressed via llama.cpp's `verbose` parameter (already set to `False`, so this may require a different approach).
+4. Check if setting `verbose=False` should already suppress this — if not, file upstream or find the correct suppression.
+
+**Priority**: Low — cosmetic. 4096 context is likely sufficient for MVP query patterns.
