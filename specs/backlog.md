@@ -4,7 +4,7 @@ Items captured during MVP development for future consideration.
 
 ## Agent Instructions
 
-**Highest Bxxx Entry**: 9
+**Highest Bxxx Entry**: 11
 
 Use the `backlog-manage` skill for all backlog operations. B-numbers are never reused.
 
@@ -184,3 +184,53 @@ llama_context: n_ctx_per_seq (4096) < n_ctx_train (131072) — the full capacity
 4. Check if setting `verbose=False` should already suppress this — if not, file upstream or find the correct suppression.
 
 **Priority**: Low — cosmetic. 4096 context is likely sufficient for MVP query patterns.
+
+---
+
+## B010 — CLI command to measure and update model VRAM sizes in config
+
+**Origin**: User observation — `vram_gb` in `config.toml` is a manual guess. Actual VRAM usage (observed via `nvtop`) differs from the configured value (e.g. config says 12.0 GB, actual is ~11.2 GB / 11472 MiB). Accurate sizing matters for the model manager's VRAM budget decisions (hot-swap vs simultaneous loading).
+
+**Current behavior**: Users must guess `vram_gb` when configuring models. There is no tooling to measure actual VRAM consumption.
+
+**Desired behavior**: A CLI command (e.g. `kris config update-model-sizes`) that:
+1. Reads the current config to find all configured models (embedding + LLM)
+2. For each model, loads it onto the GPU and measures actual VRAM usage (e.g. via `torch.cuda.memory_allocated()` for embedding models, or llama.cpp's reported buffer sizes for GGUF models)
+3. Updates the `vram_gb` field in `config.toml` with the measured value
+4. Reports a summary:
+   ```
+   Model                          Configured    Measured    Updated
+   BAAI/bge-base-en-v1.5          0.5 GB        0.4 GB      ✓
+   Phi-3-medium-128k              12.0 GB       11.2 GB     ✓
+   ```
+5. Unloads each model before loading the next (VRAM budget)
+
+**Implementation notes**:
+- Embedding models (sentence-transformers): use `torch.cuda.memory_allocated()` before/after loading
+- LLM models (llama-cpp): parse the `CUDA0 model buffer size` from llama.cpp's load output, or use `torch.cuda.memory_allocated()` delta
+- Must handle the case where no GPU is available (skip sizing, warn user)
+- Consider `--dry-run` flag that reports sizes without writing to config
+- TOML writing: need a library that preserves comments and formatting (e.g. `tomlkit`) or a targeted regex replacement on the `vram_gb` line
+
+**Priority**: Medium — improves accuracy of VRAM budget decisions; removes guesswork from config setup.
+
+---
+
+## B011 — Add --show-failed switch to `kris status` and suppress failed files by default
+
+**Origin**: User observation — `kris status` unconditionally prints a "Failed Files" table that can be very long (hundreds of encoding failures, unsupported file types, etc.), drowning out the useful summary.
+
+**Current behavior**: `kris status` always displays the full failed-files table when any failures exist (see `src/kris/cli/status.py` lines ~116-131). There is no way to hide it, and no way to show it on demand if it were hidden.
+
+**Desired behavior**:
+1. By default, `kris status` shows only the summary table plus a one-line count like `42 files failed (use --show-failed to list them)`.
+2. `kris status --show-failed` (or `-f`) displays the full failed-files table as it does today.
+3. JSON output (`--json`) always includes the `failed_files` array regardless of the flag — filtering is a display concern.
+
+**Implementation notes**:
+- Add `--show-failed` / `-f` `typer.Option` boolean flag, default `False`.
+- When flag is off and `len(failed) > 0`, print a summary line with count instead of the table.
+- When flag is on, print the table as today.
+- No changes to JSON output.
+
+**Priority**: Low — cosmetic improvement; the data is already available, just noisy by default.

@@ -272,6 +272,37 @@ kris -vv index      # DEBUG level
 
 ---
 
+## Direct Scanner Usage
+
+The Rust scanner binary (`kris-scanner`) can be invoked directly
+for advanced use cases. Normally `kris index` handles scanning
+automatically.
+
+### Exploration scan (metadata only)
+
+For large directory trees where you want file counts, size
+distribution, and type breakdown without the cost of hashing
+every file:
+
+```bash
+kris-scanner --db /path/to/catalog.db --source-id home --base-path /home/user --skip-hash
+```
+
+With `--skip-hash`, SHA-256 content hashing is bypassed. Files are
+recorded with `content_hash = "skipped"` — they would need
+re-scanning without this flag before processing (extract/chunk/embed).
+
+### Full scan
+
+```bash
+kris-scanner --db /path/to/catalog.db --source-id home --base-path /home/user
+```
+
+Computes SHA-256 hashes for change detection. This is the mode
+used by `kris index`.
+
+---
+
 ## Development
 
 ```bash

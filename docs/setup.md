@@ -117,6 +117,29 @@ on the number of files. Monitor progress with:
 uv run kris status
 ```
 
+## GPU Setup
+
+### Embedding model
+
+The embedding model (sentence-transformers) uses CUDA automatically
+when PyTorch is installed with CUDA support. No extra steps needed
+if `torch.cuda.is_available()` returns `True`.
+
+### LLM inference
+
+`llama-cpp-python` must be built with CUDA support for GPU-accelerated
+LLM inference. The default pip/uv install is CPU-only. Rebuild with:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" uv pip install llama-cpp-python --force-reinstall --no-cache-dir
+```
+
+Verify GPU offloading by checking the log output during `kris query` —
+you should see all model layers offloaded to CUDA and a `CUDA0` model
+buffer allocation.
+
+---
+
 ## Troubleshooting
 
 **"Configuration file not found"** — Run `uv run kris init` first.
@@ -129,6 +152,10 @@ Rust scanner.
 
 **VRAM errors** — Ensure your GPU has enough VRAM for the configured
 models. Reduce `vram_gb` or use a smaller embedding model.
+
+**LLM running on CPU** — If `kris query` is slow and logs show
+`n_gpu_layers=0`, `llama-cpp-python` was installed without CUDA.
+See the GPU Setup section above.
 
 **Log files** — Check `~/.local/share/kris/kris.log` for detailed
 diagnostic output. Use `-v` or `-vv` for more console output.

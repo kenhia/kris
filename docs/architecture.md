@@ -117,7 +117,7 @@ graph LR
     NM -->|FileRecord stream| CATALOG
 ```
 
-**Local Scanner (Rust)** — Walks configured directories on the host machine using periodic scheduled scans. Each configured path has its own scan priority/schedule (e.g., code directories scanned hourly, image directories weekly). Performs content hashing for change detection. No real-time filesystem watching — periodic scanning keeps complexity manageable and is sufficient for the expected change rate (~hundreds of files/day).
+**Local Scanner (Rust)** — Walks configured directories on the host machine using periodic scheduled scans. Each configured path has its own scan priority/schedule (e.g., code directories scanned hourly, image directories weekly). Performs content hashing (SHA-256) for change detection. Supports a `--skip-hash` flag for fast exploration scans where only metadata (size, mtime, file kind) is needed — useful for magnitude estimation of large directory trees before committing to a full hash-and-index run. No real-time filesystem watching — periodic scanning keeps complexity manageable and is sufficient for the expected change rate (~hundreds of files/day).
 
 **Remote Agents (Rust)** — The same scanner binary deployed to remote Linux hosts, operating in agent mode. Runs as a daemon or via cron, scans locally, and pushes `FileRecord` manifests to the hub. Produces a single static binary for easy deployment. Future: Windows agent support via scheduled tasks.
 
