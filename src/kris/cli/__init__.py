@@ -1,0 +1,1 @@
+"""kris CLI application."""

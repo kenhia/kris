@@ -117,7 +117,7 @@ graph LR
     NM -->|FileRecord stream| CATALOG
 ```
 
-**Local Scanner (Rust)** — Walks configured directories on the host machine using periodic scheduled scans. Each configured path has its own scan priority/schedule (e.g., code directories scanned hourly, image directories weekly). Performs content hashing for change detection. No real-time filesystem watching — periodic scanning keeps complexity manageable and is sufficient for the expected change rate (~hundreds of files/day).
+**Local Scanner (Rust)** — Walks configured directories on the host machine using periodic scheduled scans. Each configured path has its own scan priority/schedule (e.g., code directories scanned hourly, image directories weekly). Performs content hashing (SHA-256) for change detection. Supports a `--skip-hash` flag for fast exploration scans where only metadata (size, mtime, file kind) is needed — useful for magnitude estimation of large directory trees before committing to a full hash-and-index run. No real-time filesystem watching — periodic scanning keeps complexity manageable and is sufficient for the expected change rate (~hundreds of files/day).
 
 **Remote Agents (Rust)** — The same scanner binary deployed to remote Linux hosts, operating in agent mode. Runs as a daemon or via cron, scans locally, and pushes `FileRecord` manifests to the hub. Produces a single static binary for easy deployment. Future: Windows agent support via scheduled tasks.
 
@@ -342,8 +342,9 @@ Processing outputs are stored in typed backends appropriate to their access patt
 
 **Qdrant collection strategy:**
 - Named vector spaces per embedding model (e.g., `text`, `code`)
-- Payload includes: `content_hash`, `source_id`, `chunk_index`, `file_kind`, `path`
-- Enables filtered search (by source, file kind, path prefix)
+- Payload includes: `content_hash`, `chunk_index`, `file_kind`
+- File paths and source IDs resolved at query time by joining `content_hash` back to SQLite (ensures deduped content returns all associated paths)
+- Enables filtered search (by file kind; source/path filtering via SQLite join)
 
 ---
 
@@ -399,9 +400,8 @@ XDG-compliant configuration following krag's established pattern:
 | Location | Contents |
 |----------|----------|
 | `$XDG_CONFIG_HOME/kris/config.toml` | Sources, models, pipeline settings |
+| `$XDG_DATA_HOME/kris/` | SQLite catalog, logs, blob store |
 | `$XDG_CACHE_HOME/kris/` | Downloaded models, Qdrant data |
-| `$XDG_STATE_HOME/kris/` | SQLite databases, logs, PID files |
-| `$XDG_DATA_HOME/kris/` | Blob store (thumbnails, cached extractions) |
 
 ### Observability
 
@@ -434,7 +434,8 @@ XDG-compliant configuration following krag's established pattern:
 | Scanner ↔ Core IPC | SQLite | Both Rust and Python have battle-tested SQLite libraries; atomic, no serialization format to maintain |
 | Task planner / Queue | Python | Tight integration with ML ecosystem; simpler than cross-language orchestration |
 | Processing workers | Python | ML/LLM ecosystem (transformers, sentence-transformers, llama-cpp) |
-| API service | Python (FastAPI) | Proven pattern from krag, async support |
+| Code chunking | tree-sitter | AST-aware chunking for source code files |
+| API service (Phase 2) | Python (FastAPI) | Proven pattern from krag, async support |
 | CLI | Python (Typer + Rich) | Proven pattern from krag |
 | Vector store | Qdrant | Proven in krag, named vectors, filtered search |
 | Metadata store | SQLite | Simple, reliable, no server process. Shared between Rust scanner and Python core. |
@@ -495,7 +496,7 @@ graph TB
 ### MVP Delivers
 
 - Scan local directories (including NAS mount paths), detect new/changed files
-- Per-path scan schedules with configurable priority
+- Per-path scan schedule configuration schema (schedule execution deferred to Phase 2)
 - Extract and chunk text, code, and markdown files
 - Embed chunks with a single embedding model
 - Store vectors in Qdrant with file metadata

@@ -1,0 +1,23 @@
+line-length = 99
+target-version = "py312"
+exclude = ["poc-ex"]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TC",   # flake8-type-checking
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "TC003",  # false positives with runtime-used stdlib imports + __future__ annotations
+]
+
+[lint.isort]
+known-first-party = ["kris"]

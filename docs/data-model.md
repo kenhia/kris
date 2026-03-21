@@ -584,8 +584,6 @@ Each point stored in Qdrant carries a payload for filtered search:
 ```json
 {
     "content_hash": "abc123...",
-    "source_id": "local-src",
-    "path": "kris/src/main.rs",
     "file_kind": "code",
     "chunk_index": 3,
     "function_name": "process_file",
@@ -597,13 +595,17 @@ Each point stored in Qdrant carries a payload for filtered search:
 ```
 
 **Indexed payload fields** (for filtered search):
-- `content_hash` — join back to catalog for dedup-aware queries
+- `content_hash` — join back to SQLite catalog for file paths, source IDs, and dedup-aware queries
 - `parent_content_hash` — walk up context chain for retrieval enrichment
-- `source_id` — filter by data source
 - `file_kind` — filter by file type
-- `path` — prefix filter for directory scoping
 - `tags` — keyword filter
 - `function_name`, `class_name` — code-specific filters
+
+**Note**: `source_id` and `path` are intentionally omitted from the Qdrant payload.
+Because content-addressed dedup means a single `content_hash` may map to multiple
+files across multiple sources, these fields are resolved at query time by joining
+`content_hash` back to the SQLite `file` table. This ensures all file locations
+are returned for deduplicated content.
 
 ---
 
