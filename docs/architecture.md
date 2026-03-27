@@ -346,6 +346,10 @@ Processing outputs are stored in typed backends appropriate to their access patt
 - File paths and source IDs resolved at query time by joining `content_hash` back to SQLite (ensures deduped content returns all associated paths)
 - Enables filtered search (by file kind; source/path filtering via SQLite join)
 
+**Qdrant deployment modes:**
+- **Embedded** (default): Qdrant runs in-process with data stored locally (`~/.cache/kris/qdrant/`). Zero configuration; suitable for personal use up to ~50K files.
+- **Server**: Qdrant runs as a separate service (e.g., Docker). Configured via `[qdrant] mode = "server"` in `config.toml`. Required for larger collections or shared access. The `create_qdrant_client(config)` factory selects the mode automatically.
+
 ---
 
 ### 7. Query & Serve Layer

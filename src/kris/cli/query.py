@@ -67,6 +67,7 @@ def query(
             source_filter=source,
             kind_filter=kind,
             retrieval_only=False,
+            config=config,
         )
 
         if json_output:
@@ -149,6 +150,7 @@ def retrieve(
             source_filter=source,
             kind_filter=kind,
             retrieval_only=True,
+            config=config,
         )
 
         if json_output:

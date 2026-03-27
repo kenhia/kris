@@ -377,3 +377,93 @@ def cleanup_missing_files(
         "embeddings_removed": embeddings_removed,
         "qdrant_point_ids": qdrant_point_ids,
     }
+
+
+def get_failed_by_extension(
+    conn: sqlite3.Connection,
+    source_id: str | None = None,
+) -> list[dict]:
+    """Group failed files by extension and file kind."""
+    source_filter = ""
+    params: list = []
+    if source_id:
+        source_filter = "AND f.source_id = ?"
+        params = [source_id]
+
+    rows = conn.execute(
+        f"""SELECT
+                CASE
+                    WHEN f.path LIKE '%.%'
+                    THEN '.' || substr(f.path, length(rtrim(f.path, replace(f.path, '.', ''))) + 1)
+                    ELSE '(no extension)'
+                END AS extension,
+                f.file_kind,
+                COUNT(*) AS count
+            FROM file f
+            JOIN content c ON f.content_hash = c.content_hash
+            WHERE c.processing_status = 'failed' {source_filter}
+            GROUP BY extension, f.file_kind
+            ORDER BY count DESC""",
+        params,
+    ).fetchall()
+
+    return [
+        {"extension": r["extension"], "file_kind": r["file_kind"], "count": r["count"]}
+        for r in rows
+    ]
+
+
+def get_skipped_by_kind(
+    conn: sqlite3.Connection,
+    source_id: str | None = None,
+) -> list[dict]:
+    """Group skipped files by file kind."""
+    source_filter = ""
+    params: list = []
+    if source_id:
+        source_filter = "AND f.source_id = ?"
+        params = [source_id]
+
+    rows = conn.execute(
+        f"""SELECT f.file_kind, COUNT(*) AS count
+            FROM file f
+            JOIN content c ON f.content_hash = c.content_hash
+            WHERE c.processing_status = 'skipped' {source_filter}
+            GROUP BY f.file_kind
+            ORDER BY count DESC""",
+        params,
+    ).fetchall()
+
+    return [{"file_kind": r["file_kind"], "count": r["count"]} for r in rows]
+
+
+def get_failure_path_prefixes(
+    conn: sqlite3.Connection,
+    min_count: int = 5,
+    source_id: str | None = None,
+) -> list[dict]:
+    """Group failed files by top-level directory prefix."""
+    source_filter = ""
+    params: list = []
+    if source_id:
+        source_filter = "AND f.source_id = ?"
+        params = [source_id]
+
+    rows = conn.execute(
+        f"""SELECT
+                CASE
+                    WHEN instr(f.path, '/') > 0
+                    THEN substr(f.path, 1, instr(f.path, '/'))
+                    ELSE f.path
+                END AS top_dir,
+                COUNT(*) AS failed_count
+            FROM file f
+            JOIN content c ON f.content_hash = c.content_hash
+            WHERE c.processing_status = 'failed' {source_filter}
+            GROUP BY top_dir
+            HAVING failed_count >= ?
+            ORDER BY failed_count DESC""",
+        [*params, min_count],
+    ).fetchall()
+
+    return [{"top_dir": r["top_dir"], "failed_count": r["failed_count"]} for r in rows]

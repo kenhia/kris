@@ -9,9 +9,11 @@
 | `kris query` | Ask questions about indexed files |
 | `kris retrieve` | Get relevant chunks without LLM synthesis |
 | `kris status` | View index statistics |
+| `kris diagnose` | Show failure and skip diagnostics |
 | `kris duplicates` | Find groups of identical files |
 | `kris cleanup` | Remove artifacts for missing files |
 | `kris config validate` | Validate configuration file |
+| `kris config update-model-sizes` | Measure and update model VRAM usage |
 
 ## Global Flags
 
@@ -123,7 +125,16 @@ kris status
 ```
 
 Shows a table with per-source file counts, processing status,
-chunk and embedding counts, and last scan time.
+chunk and embedding counts, and last scan time. Failed files are
+hidden by default — only a count is shown.
+
+### Show failed files
+
+```bash
+kris status --show-failed
+```
+
+Displays the full failed-files table with paths and error messages.
 
 ### Filter by source
 
@@ -201,6 +212,37 @@ kris cleanup --older-than 30d --yes
 
 ---
 
+## Diagnostics
+
+### View failure breakdowns
+
+```bash
+kris diagnose
+```
+
+Shows tables grouping processing failures by file extension,
+skipped files by kind, and common failure path prefixes.
+
+### Filter by source
+
+```bash
+kris diagnose --source my-code
+```
+
+### Adjust minimum count threshold
+
+```bash
+kris diagnose --min-count 5
+```
+
+### JSON output
+
+```bash
+kris diagnose --json
+```
+
+---
+
 ## Configuration
 
 ### Create default config
@@ -219,7 +261,24 @@ kris config validate
 kris config validate --config /path/to/config.toml
 ```
 
-Reports any configuration errors.
+Reports any configuration errors and shows effective exclude
+patterns per source.
+
+### Measure model VRAM
+
+```bash
+kris config update-model-sizes
+```
+
+Loads each configured model onto the GPU, measures actual VRAM
+usage, and updates `vram_gb` values in `config.toml` (preserving
+comments and formatting).
+
+Preview without modifying config:
+
+```bash
+kris config update-model-sizes --dry-run
+```
 
 ### Config file format
 
@@ -263,11 +322,15 @@ Errors use:
 Logs are written to `~/.local/share/kris/kris.log` with automatic
 rotation (5 MB, 3 backups).
 
-Increase console verbosity:
+At INFO level (default), per-file processing messages are suppressed
+and periodic batch summaries are shown every 3,000 items. A final
+summary reports totals at completion.
+
+Increase console verbosity for per-file detail:
 
 ```bash
-kris -v index       # INFO level
-kris -vv index      # DEBUG level
+kris -v index       # INFO level (batch summaries)
+kris -vv index      # DEBUG level (per-file messages)
 ```
 
 ---

@@ -6,6 +6,42 @@ from pathlib import Path
 
 from kris.config.schema import default_config_path
 
+DEFAULT_EXCLUDE_PATTERNS: list[str] = [
+    # VCS
+    ".git",
+    ".hg",
+    ".svn",
+    # Python
+    "__pycache__",
+    ".venv",
+    ".tox",
+    ".nox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "htmlcov",
+    "*.pyc",
+    "*.pyo",
+    # Node.js
+    "node_modules",
+    ".next",
+    ".svelte-kit",
+    ".nuxt",
+    # Rust
+    "target",
+    # Build artifacts
+    "build",
+    "dist",
+    "out",
+    # IDE/Editor
+    ".idea",
+    ".vscode",
+    ".vs",
+    # Coverage
+    ".coverage",
+    "coverage",
+]
+
 _DEFAULT_CONFIG_TOML = """\
 # kris configuration
 # See docs/setup.md for full documentation
@@ -21,6 +57,25 @@ log_level = "INFO"
 # Default: $XDG_CACHE_HOME/kris (~/.cache/kris)
 # cache_dir = ""
 
+# Default exclude patterns — merged with each source's exclude_patterns.
+# Remove or edit entries to customize. Sources can opt out with
+# include_default_exclude_patterns = false.
+default_exclude_patterns = [
+    ".git", ".hg", ".svn",
+    "__pycache__", ".venv", ".tox", ".nox", ".mypy_cache",
+    ".pytest_cache", ".ruff_cache", "htmlcov", "*.pyc", "*.pyo",
+    "node_modules", ".next", ".svelte-kit", ".nuxt",
+    "target", "build", "dist", "out",
+    ".idea", ".vscode", ".vs",
+    ".coverage", "coverage",
+]
+
+# Qdrant vector storage configuration
+[qdrant]
+mode = "embedded"              # "embedded" (local file) or "server" (HTTP)
+# url = "http://localhost:6333"  # used when mode = "server"
+# api_key = ""                   # optional, for authenticated instances
+
 # Sources — add your data directories here
 # Each source has a unique ID and points to a directory on disk.
 [sources.my-files]
@@ -28,6 +83,7 @@ name = "My Files"
 type = "local"
 base_path = "~/Documents"
 exclude_patterns = [".git", "node_modules", "__pycache__", ".venv", "target"]
+include_default_exclude_patterns = true
 
 # Scan schedules for this source
 [[sources.my-files.schedules]]

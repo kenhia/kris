@@ -3,6 +3,10 @@
     "github": {
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "kwi": {
+      "type": "stdio",
+      "command": "kwi-mcp"
     }
   }
 }

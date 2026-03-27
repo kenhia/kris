@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from kris.catalog.models import Embedding
 
 if TYPE_CHECKING:
+    from kris.config.schema import KrisConfig
     from kris.models.manager import ModelManager
     from kris.models.registry import ModelInfo
 
@@ -19,11 +20,41 @@ logger = logging.getLogger(__name__)
 COLLECTION_NAME = "kris_chunks"
 
 
-def create_qdrant_client(qdrant_path: Path) -> Any:
-    """Create a QdrantClient for embedded-mode storage."""
+def create_qdrant_client(
+    config: KrisConfig | None = None,
+    qdrant_path: Path | None = None,
+) -> Any:
+    """Create a QdrantClient based on configuration.
+
+    In server mode, connects to the configured URL.
+    In embedded mode (default), uses qdrant_path for local file-based storage.
+    """
     from qdrant_client import QdrantClient
 
-    return QdrantClient(path=str(qdrant_path))
+    if config is not None and config.qdrant.mode == "server":
+        kwargs: dict[str, Any] = {"url": config.qdrant.url}
+        if config.qdrant.api_key:
+            kwargs["api_key"] = config.qdrant.api_key
+        try:
+            client = QdrantClient(**kwargs)
+            # Verify connection works
+            client.get_collections()
+            return client
+        except Exception as e:
+            raise ConnectionError(
+                f"Cannot connect to Qdrant server at {config.qdrant.url}. "
+                f"Is the server running? Error: {e}\n"
+                f"Tip: Start Qdrant with 'docker run -p 6333:6333 qdrant/qdrant' "
+                f'or set [qdrant] mode = "embedded" in config.'
+            ) from e
+
+    # Embedded mode
+    path = qdrant_path
+    if path is None and config is not None:
+        path = config.qdrant_path
+    if path is None:
+        raise ValueError("qdrant_path is required for embedded mode")
+    return QdrantClient(path=str(path))
 
 
 def ensure_collection(client: Any, dimensions: int) -> None:
@@ -73,7 +104,7 @@ def embed_chunks(
     # Ensure collection exists
     dimensions = model_info.dimensions or len(embeddings[0])
     if client is None:
-        client = create_qdrant_client(qdrant_path)
+        client = create_qdrant_client(qdrant_path=qdrant_path)
     ensure_collection(client, dimensions)
 
     points = []

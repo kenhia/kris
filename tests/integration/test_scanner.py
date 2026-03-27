@@ -167,3 +167,53 @@ class TestScannerBinary:
         data = json.loads(result.stdout)
         assert data["files_unchanged"] == 4
         assert data["files_new"] == 0
+
+    def test_scan_with_default_excludes(self, scanner_binary, scan_env):
+        """T016: Scan with default exclude patterns — excluded dirs not in catalog."""
+        data_dir = scan_env["data_dir"]
+
+        # Add directories that match DEFAULT_EXCLUDE_PATTERNS
+        (data_dir / ".git").mkdir(exist_ok=True)
+        (data_dir / ".git" / "config").write_text("gitconfig", encoding="utf-8")
+        (data_dir / "node_modules").mkdir(exist_ok=True)
+        (data_dir / "node_modules" / "pkg.js").write_text("pkg", encoding="utf-8")
+        (data_dir / "__pycache__").mkdir(exist_ok=True)
+        (data_dir / "__pycache__" / "mod.cpython-313.pyc").write_bytes(b"\x00")
+        (data_dir / ".venv").mkdir(exist_ok=True)
+        (data_dir / ".venv" / "bin" / "python").parent.mkdir(parents=True)
+        (data_dir / ".venv" / "bin" / "python").write_text("#!/bin/sh", encoding="utf-8")
+
+        from kris.config.defaults import DEFAULT_EXCLUDE_PATTERNS
+
+        cmd = [
+            str(scanner_binary),
+            "--db",
+            str(scan_env["db_path"]),
+            "--source-id",
+            "test-src",
+            "--base-path",
+            str(data_dir),
+            "--json",
+        ]
+        for pat in DEFAULT_EXCLUDE_PATTERNS:
+            cmd.extend(["--exclude", pat])
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0
+
+        data = json.loads(result.stdout)
+        # The original 4 files should be found, excluded ones should not
+        assert data["files_found"] == 4
+
+        # Verify nothing from excluded dirs is in the DB
+        conn = sqlite3.connect(str(scan_env["db_path"]))
+        conn.row_factory = sqlite3.Row
+        files = conn.execute("SELECT path FROM file WHERE source_id = 'test-src'").fetchall()
+        conn.close()
+
+        paths = [f["path"] for f in files]
+        for p in paths:
+            assert ".git" not in p
+            assert "node_modules" not in p
+            assert "__pycache__" not in p
+            assert ".venv" not in p

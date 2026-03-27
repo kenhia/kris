@@ -1,5 +1,12 @@
 # Backlog Archive
 
+> **MIGRATED**: Archived items have been moved to the kwi workitems database (project: `kris`, status: `closed`).
+>
+> | Backlog ID | kwi WI # | Title |
+> |------------|----------|-------|
+> | B006 | #6 | Embedding pipeline per-call overhead |
+> | B007 | #7 | Query pipeline not using GPU for LLM inference |
+
 Items moved from backlog into active sprints or completed.
 
 ---

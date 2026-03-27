@@ -97,3 +97,36 @@ class ModelManager:
         self._loaded_model_id = info.model_id
         self._loaded_info = info
         return model
+
+
+def measure_model_vram(model_info: ModelInfo) -> float:
+    """Measure VRAM usage for a model by loading it and checking GPU memory delta.
+
+    Uses driver-level memory reporting (torch.cuda.mem_get_info) so that
+    allocations from non-PyTorch runtimes like llama.cpp are captured.
+
+    Returns VRAM usage in GB. Raises RuntimeError if the model fails to load (e.g. OOM).
+    """
+    import torch
+
+    manager = ModelManager()
+
+    # Ensure clean state
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    free_before, _ = torch.cuda.mem_get_info()
+
+    try:
+        if model_info.model_type == "embedding":
+            manager.load_embedding_model(model_info)
+        elif model_info.model_type == "llm":
+            manager.load_llm(model_info)
+        else:
+            raise ValueError(f"Unknown model type: {model_info.model_type}")
+
+        free_after, _ = torch.cuda.mem_get_info()
+        delta_bytes = free_before - free_after
+        delta_gb = round(max(delta_bytes, 0) / (1024**3), 2)
+        return delta_gb
+    finally:
+        manager.unload()

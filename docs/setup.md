@@ -101,7 +101,73 @@ kris stores data in XDG-compliant locations:
 |----------|-------------|----------|
 | Config | `~/.config/kris/` | `config.toml` |
 | Data | `~/.local/share/kris/` | `catalog.db` (SQLite), `kris.log` |
-| Cache | `~/.cache/kris/` | `qdrant/` (vector store) |
+| Cache | `~/.cache/kris/` | `qdrant/` (vector store, embedded mode) |
+
+## Default Exclude Patterns
+
+kris ships with a built-in list of exclude patterns that filter common
+non-content directories and files during scanning. These include `.git`,
+`node_modules`, `__pycache__`, `target/`, `*.pyc`, `.DS_Store`, and many
+more (33 patterns total covering VCS, Python, Node.js, Rust, IDE, and
+build artifacts).
+
+To **opt out** of default excludes for a specific source:
+
+```toml
+[sources.my-code]
+include_default_exclude_patterns = false
+exclude_patterns = [".git"]
+```
+
+To see the effective exclude list for each source:
+
+```bash
+uv run kris config validate
+```
+
+## Qdrant Server Mode
+
+By default kris uses Qdrant in embedded mode (data stored locally). For
+large collections (50K+ files) or shared access, switch to a Qdrant
+server:
+
+### Start Qdrant via Docker
+
+```bash
+docker run -d --name qdrant \
+  -p 6333:6333 -p 6334:6334 \
+  -v qdrant_storage:/qdrant/storage \
+  qdrant/qdrant:latest
+```
+
+### Configure kris to use the server
+
+```toml
+[qdrant]
+mode = "server"
+url = "http://localhost:6333"
+# api_key = "your-key"  # optional, for Qdrant Cloud
+```
+
+Embedded mode is the default when `[qdrant]` is absent or
+`mode = "embedded"`.
+
+## VRAM Calibration
+
+Measure actual GPU VRAM usage for your models and update the config:
+
+```bash
+uv run kris config update-model-sizes
+```
+
+This loads each model onto the GPU, measures VRAM consumption, and
+writes the results back to `config.toml` (preserving comments).
+
+Preview without modifying config:
+
+```bash
+uv run kris config update-model-sizes --dry-run
+```
 
 ## First Index
 
