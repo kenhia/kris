@@ -1,11 +1,16 @@
-"""Unit tests for status query functions."""
+"""Unit tests for status query functions and CLI output."""
 
 from __future__ import annotations
 
+import json
+from unittest.mock import patch
+
 import pytest
+from typer.testing import CliRunner
 
 from kris.catalog.db import get_connection
 from kris.catalog.files import get_failed_files, get_status_summary
+from kris.cli.app import app
 
 
 @pytest.fixture
@@ -183,3 +188,143 @@ class TestGetFailedFiles:
     def test_failed_with_matching_source(self, status_db):
         failed = get_failed_files(status_db, source_id="src-1")
         assert len(failed) == 1
+
+
+# ---------------------------------------------------------------------------
+# CLI-level tests for --show-failed (T053-T055)
+# ---------------------------------------------------------------------------
+
+runner = CliRunner()
+
+
+def _mock_status_data():
+    """Return (summary, failed) tuples that mock DB queries."""
+    summary = [
+        {
+            "source_id": "src-1",
+            "source_name": "Home",
+            "last_scan": "2025-01-01T00:00:00",
+            "total_files": 10,
+            "by_kind": {"text": 8, "code": 2},
+            "by_status": {"completed": 8, "failed": 2},
+            "total_chunks": 50,
+            "total_embeddings": 50,
+        }
+    ]
+    failed = [
+        {"path": "bad1.txt", "source_id": "src-1", "error": "encoding error"},
+        {"path": "bad2.bin", "source_id": "src-1", "error": "binary file"},
+    ]
+    return summary, failed
+
+
+class TestStatusShowFailed:
+    """T053 — Default output hides failed files, shows one-line count."""
+
+    def test_default_hides_failed_table(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[sources.test]\nname = "Test"\nbase_path = "/tmp/test"\n',
+            encoding="utf-8",
+        )
+        summary, failed = _mock_status_data()
+
+        with (
+            patch("kris.cli.status.get_status_summary", return_value=summary),
+            patch("kris.cli.status.get_failed_files", return_value=failed),
+            patch("kris.cli.status.get_connection"),
+        ):
+            result = runner.invoke(app, ["status", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        # Should show a count mention
+        assert "2" in result.output  # 2 failed files
+        assert "show-failed" in result.output.lower() or "--show-failed" in result.output
+        # Should NOT show full failed-files table rows
+        assert "bad1.txt" not in result.output
+        assert "bad2.bin" not in result.output
+
+    def test_show_failed_flag_shows_table(self, tmp_path):
+        """T054 — --show-failed displays full table."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[sources.test]\nname = "Test"\nbase_path = "/tmp/test"\n',
+            encoding="utf-8",
+        )
+        summary, failed = _mock_status_data()
+
+        with (
+            patch("kris.cli.status.get_status_summary", return_value=summary),
+            patch("kris.cli.status.get_failed_files", return_value=failed),
+            patch("kris.cli.status.get_connection"),
+        ):
+            result = runner.invoke(app, ["status", "--config", str(config_path), "--show-failed"])
+
+        assert result.exit_code == 0
+        # Full table rendered
+        assert "bad1.txt" in result.output
+        assert "bad2.bin" in result.output
+
+    def test_no_failures_no_message(self, tmp_path):
+        """When no failures, don't show any failure section."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[sources.test]\nname = "Test"\nbase_path = "/tmp/test"\n',
+            encoding="utf-8",
+        )
+        summary, _ = _mock_status_data()
+
+        with (
+            patch("kris.cli.status.get_status_summary", return_value=summary),
+            patch("kris.cli.status.get_failed_files", return_value=[]),
+            patch("kris.cli.status.get_connection"),
+        ):
+            result = runner.invoke(app, ["status", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        assert "show-failed" not in result.output.lower()
+
+
+class TestStatusJsonShowFailed:
+    """T055 — JSON output always includes failed_files."""
+
+    def test_json_always_includes_failed_files(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[sources.test]\nname = "Test"\nbase_path = "/tmp/test"\n',
+            encoding="utf-8",
+        )
+        summary, failed = _mock_status_data()
+
+        with (
+            patch("kris.cli.status.get_status_summary", return_value=summary),
+            patch("kris.cli.status.get_failed_files", return_value=failed),
+            patch("kris.cli.status.get_connection"),
+        ):
+            result = runner.invoke(app, ["--json", "status", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "failed_files" in data["data"]
+        assert len(data["data"]["failed_files"]) == 2
+
+    def test_json_includes_failed_even_without_flag(self, tmp_path):
+        """JSON mode includes failed_files regardless of --show-failed."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[sources.test]\nname = "Test"\nbase_path = "/tmp/test"\n',
+            encoding="utf-8",
+        )
+        summary, failed = _mock_status_data()
+
+        with (
+            patch("kris.cli.status.get_status_summary", return_value=summary),
+            patch("kris.cli.status.get_failed_files", return_value=failed),
+            patch("kris.cli.status.get_connection"),
+        ):
+            # No --show-failed flag, but JSON should still have it
+            result = runner.invoke(app, ["--json", "status", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data["data"]["failed_files"]) == 2

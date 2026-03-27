@@ -1,12 +1,27 @@
 # Backlog
 
-Items captured during MVP development for future consideration.
+> **MIGRATED**: All backlog items have been moved to the kwi workitems database (project: `kris`).
+> Use `kwi list --project kris` or the `mcp_kwi_list_work_items` tool to view current items.
+> B-numbers are preserved in work item titles for traceability.
+>
+> | Backlog ID | kwi WI # | Title |
+> |------------|----------|-------|
+> | B001 | #8 | Parallelize Rust scanner |
+> | B002 | #9 | Reduce per-file chunk/embed log noise |
+> | B003 | #10 | Default exclude patterns with per-source opt-out |
+> | B004 | #11 | Record and surface encoding failures for exclude tuning |
+> | B005 | #12 | Handle BertModel embeddings.position_ids warning |
+> | B008 | #13 | Qdrant local mode warning / server migration |
+> | B009 | #14 | llama.cpp n_ctx_per_seq warning |
+> | B010 | #15 | CLI command to measure and update model VRAM sizes |
+> | B011 | #16 | Add --show-failed switch to kris status |
 
 ## Agent Instructions
 
 **Highest Bxxx Entry**: 11
 
-Use the `backlog-manage` skill for all backlog operations. B-numbers are never reused.
+New backlog items should be created directly in kwi using `mcp_kwi_create_work_item`.
+B-numbers are no longer assigned — use kwi work item IDs instead.
 
 ---
 

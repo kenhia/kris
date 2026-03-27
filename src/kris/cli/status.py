@@ -30,6 +30,10 @@ def status(
         str | None,
         typer.Option("--source", "-s", help="Show status for a specific source"),
     ] = None,
+    show_failed: Annotated[
+        bool,
+        typer.Option("--show-failed", "-f", help="Show full failed-files table"),
+    ] = False,
 ) -> None:
     """Show index statistics."""
     try:
@@ -104,7 +108,7 @@ def status(
         out_console.print(table)
 
         # Failed files section
-        if failed:
+        if failed and show_failed:
             out_console.print()
             fail_table = Table(title="Failed Files", style="red")
             fail_table.add_column("Source", style="dim")
@@ -115,6 +119,9 @@ def status(
                 fail_table.add_row(f["source_id"], f["path"], f["error"] or "Unknown")
 
             out_console.print(fail_table)
+        elif failed:
+            msg = f"{len(failed)} failed file(s). Use --show-failed to see details."
+            out_console.print(f"\n[yellow]{msg}[/yellow]")
 
     finally:
         conn.close()

@@ -12,6 +12,7 @@ from kris.query.retriever import RetrievalResult, retrieve
 from kris.query.synthesizer import synthesize
 
 if TYPE_CHECKING:
+    from kris.config.schema import KrisConfig
     from kris.models.manager import ModelManager
     from kris.models.registry import ModelRegistry
 
@@ -36,6 +37,7 @@ def query(
     source_filter: str | None = None,
     kind_filter: str | None = None,
     retrieval_only: bool = False,
+    config: KrisConfig | None = None,
 ) -> QueryResult:
     """Run a query: retrieve relevant chunks and optionally synthesize an answer.
 
@@ -54,6 +56,7 @@ def query(
         top_k=top_k,
         source_filter=source_filter,
         kind_filter=kind_filter,
+        config=config,
     )
 
     if retrieval_only:

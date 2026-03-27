@@ -122,6 +122,7 @@ name = "Source Code"
 type = "local"
 base_path = "~/src"
 exclude_patterns = ["target", "node_modules", ".git", ".venv"]
+include_default_exclude_patterns = true  # merge with built-in 33 patterns
 
 [[sources.my-code.schedules]]
 path_pattern = "**"
@@ -138,6 +139,12 @@ vram_gb = 0.5
 name = "my-local-llm"
 model_path = "/path/to/model.gguf"
 vram_gb = 8.0
+
+# Qdrant vector store (optional — defaults to embedded mode)
+[qdrant]
+mode = "embedded"            # "embedded" or "server"
+# url = "http://localhost:6333"  # required when mode = "server"
+# api_key = ""                   # optional, for Qdrant Cloud
 
 # Storage (optional — defaults to XDG paths)
 data_dir = ""     # default: ~/.local/share/kris
@@ -172,7 +179,7 @@ log_level = "INFO"
 | Scanner ↔ Core IPC | SQLite (shared catalog.db) |
 | Processing & CLI | Python (Typer, Rich, sentence-transformers, llama-cpp-python) |
 | Code chunking | tree-sitter |
-| Vector store | Qdrant (embedded mode) |
+| Vector store | Qdrant (embedded or server mode) |
 | Metadata store | SQLite (WAL mode) |
 | Configuration | TOML |
 
@@ -184,8 +191,10 @@ log_level = "INFO"
 | `kris index` | Scan sources, extract, chunk, embed |
 | `kris query <text>` | Semantic search + LLM synthesis |
 | `kris retrieve <text>` | Semantic search without LLM |
-| `kris status` | Show index statistics |
-| `kris config validate` | Validate configuration |
+| `kris status` | Show index statistics (use `--show-failed` for failure table) |
+| `kris diagnose` | Show failure/skip aggregations and suggested excludes |
+| `kris config validate` | Validate configuration and show effective excludes |
+| `kris config update-model-sizes` | Measure GPU VRAM per model and update config |
 | `kris duplicates` | List content-addressed duplicates |
 | `kris cleanup` | Remove archived file artifacts |
 

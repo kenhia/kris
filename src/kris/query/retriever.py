@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from kris.config.schema import KrisConfig
     from kris.models.manager import ModelManager
     from kris.models.registry import ModelInfo
 
@@ -39,18 +40,19 @@ def retrieve(
     top_k: int = 10,
     source_filter: str | None = None,
     kind_filter: str | None = None,
+    config: KrisConfig | None = None,
 ) -> list[RetrievalResult]:
     """Embed the query and search Qdrant for similar chunks.
 
     Returns results enriched with file metadata from SQLite.
     """
-    from qdrant_client import QdrantClient
+    from kris.processing.embed import create_qdrant_client
 
     # Embed the query using the same model used for indexing
     model = model_manager.load_embedding_model(model_info)
     query_vector = model.encode([query], show_progress_bar=False)[0].tolist()
 
-    client = QdrantClient(path=str(qdrant_path))
+    client = create_qdrant_client(config, qdrant_path=Path(qdrant_path))
     search_results = client.query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,

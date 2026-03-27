@@ -11,7 +11,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kris.catalog.db import get_connection
 from kris.cli.app import app, console, is_json_output, print_error, print_json_response
-from kris.config.schema import load_config
+from kris.config.schema import get_effective_excludes, load_config
 from kris.models.manager import ModelManager
 from kris.models.registry import ModelRegistry
 from kris.planner.planner import plan_pending_content
@@ -80,7 +80,7 @@ def index(
                     db_path=db_path,
                     source_id=source_id,
                     base_path=Path(source_cfg.base_path),
-                    exclude_patterns=source_cfg.exclude_patterns or [".git"],
+                    exclude_patterns=get_effective_excludes(source_cfg),
                     follow_symlinks=False,
                 )
                 total_scan["files_found"] += result.files_found
@@ -122,12 +122,13 @@ def index(
                         model_manager,
                         registry,
                         on_progress=on_progress,
+                        config=config,
                     )
                     total_tasks["completed"] = completed
                     total_tasks["failed"] = failed
             else:
                 completed, failed = run_worker(
-                    conn, data_dir, qdrant_path, model_manager, registry
+                    conn, data_dir, qdrant_path, model_manager, registry, config=config
                 )
                 total_tasks["completed"] = completed
                 total_tasks["failed"] = failed

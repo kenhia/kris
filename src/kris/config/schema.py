@@ -41,6 +41,13 @@ def default_cache_dir() -> Path:
 
 
 @dataclass
+class QdrantConfig:
+    mode: str = "embedded"
+    url: str = "http://localhost:6333"
+    api_key: str = ""
+
+
+@dataclass
 class ScheduleConfig:
     path_pattern: str = "**"
     interval_minutes: int = 60
@@ -53,6 +60,7 @@ class SourceConfig:
     base_path: str
     source_type: str = "local"
     exclude_patterns: list[str] = field(default_factory=list)
+    include_default_exclude_patterns: bool = True
     schedules: list[ScheduleConfig] = field(default_factory=list)
 
 
@@ -80,6 +88,7 @@ class ModelsConfig:
 class KrisConfig:
     sources: dict[str, SourceConfig] = field(default_factory=dict)
     models: ModelsConfig = field(default_factory=ModelsConfig)
+    qdrant: QdrantConfig = field(default_factory=QdrantConfig)
     data_dir: str = ""
     cache_dir: str = ""
     log_level: str = "INFO"
@@ -127,6 +136,7 @@ def _parse_source(source_id: str, raw: dict) -> SourceConfig:
         base_path=str(Path(base_path).expanduser()),
         source_type=raw.get("type", "local"),
         exclude_patterns=raw.get("exclude_patterns", []),
+        include_default_exclude_patterns=raw.get("include_default_exclude_patterns", True),
         schedules=schedules,
     )
 
@@ -146,6 +156,35 @@ def _parse_models(raw: dict) -> ModelsConfig:
             vram_gb=llm_raw.get("vram_gb", 8.0),
         ),
     )
+
+
+def _parse_qdrant(raw: dict) -> QdrantConfig:
+    return QdrantConfig(
+        mode=raw.get("mode", "embedded"),
+        url=raw.get("url", "http://localhost:6333"),
+        api_key=raw.get("api_key", ""),
+    )
+
+
+def get_effective_excludes(source: SourceConfig) -> list[str]:
+    """Merge default exclude patterns with source-specific patterns.
+
+    Returns the union (deduplicated, order preserved) of the default patterns
+    and the source's own exclude_patterns. If the source has
+    include_default_exclude_patterns=False, only its own patterns are returned.
+    """
+    from kris.config.defaults import DEFAULT_EXCLUDE_PATTERNS
+
+    if not source.include_default_exclude_patterns:
+        return list(source.exclude_patterns)
+
+    seen: set[str] = set()
+    merged: list[str] = []
+    for pattern in DEFAULT_EXCLUDE_PATTERNS + source.exclude_patterns:
+        if pattern not in seen:
+            seen.add(pattern)
+            merged.append(pattern)
+    return merged
 
 
 def load_config(config_path: str | Path | None = None) -> KrisConfig:
@@ -168,10 +207,12 @@ def load_config(config_path: str | Path | None = None) -> KrisConfig:
         sources[source_id] = _parse_source(source_id, source_raw)
 
     models = _parse_models(raw.get("models", {}))
+    qdrant = _parse_qdrant(raw.get("qdrant", {}))
 
     return KrisConfig(
         sources=sources,
         models=models,
+        qdrant=qdrant,
         data_dir=raw.get("data_dir", ""),
         cache_dir=raw.get("cache_dir", ""),
         log_level=raw.get("log_level", "INFO"),

@@ -6,13 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from kris.config.defaults import generate_default_config
+from kris.config.defaults import DEFAULT_EXCLUDE_PATTERNS, generate_default_config
 from kris.config.schema import (
     ConfigError,
     KrisConfig,
+    QdrantConfig,
+    SourceConfig,
     default_cache_dir,
     default_config_path,
     default_data_dir,
+    get_effective_excludes,
     load_config,
     validate_config,
 )
@@ -276,3 +279,160 @@ class TestMultiSourceConfig:
         config = load_config(path)
         errors = validate_config(config)
         assert errors == []
+
+
+class TestGetEffectiveExcludes:
+    """T008 — verify merge and opt-out behavior."""
+
+    def test_merges_default_and_source_patterns(self):
+        source = SourceConfig(
+            name="Test",
+            base_path="/tmp",
+            exclude_patterns=[".scratch-agent", ".git"],  # .git is a duplicate
+        )
+        result = get_effective_excludes(source)
+        # All defaults should be present
+        for pat in DEFAULT_EXCLUDE_PATTERNS:
+            assert pat in result
+        # Source-specific pattern should be present
+        assert ".scratch-agent" in result
+        # No duplicates
+        assert result.count(".git") == 1
+
+    def test_opt_out_with_include_false(self):
+        source = SourceConfig(
+            name="Test",
+            base_path="/tmp",
+            exclude_patterns=[".git", "custom"],
+            include_default_exclude_patterns=False,
+        )
+        result = get_effective_excludes(source)
+        assert result == [".git", "custom"]
+        # Should NOT contain defaults beyond what was explicitly listed
+        assert "node_modules" not in result
+
+    def test_defaults_only_when_no_source_patterns(self):
+        source = SourceConfig(name="Test", base_path="/tmp")
+        result = get_effective_excludes(source)
+        assert result == DEFAULT_EXCLUDE_PATTERNS
+
+    def test_preserves_order_defaults_first(self):
+        source = SourceConfig(
+            name="Test",
+            base_path="/tmp",
+            exclude_patterns=["zzz_custom"],
+        )
+        result = get_effective_excludes(source)
+        # Defaults come first, then source-specific
+        default_last_idx = result.index(DEFAULT_EXCLUDE_PATTERNS[-1])
+        custom_idx = result.index("zzz_custom")
+        assert custom_idx > default_last_idx
+
+
+class TestQdrantConfig:
+    """T009 — verify QdrantConfig defaults and validation."""
+
+    def test_defaults(self):
+        qc = QdrantConfig()
+        assert qc.mode == "embedded"
+        assert qc.url == "http://localhost:6333"
+        assert qc.api_key == ""
+
+    def test_server_mode(self):
+        qc = QdrantConfig(mode="server", url="http://qdrant:6333", api_key="secret")
+        assert qc.mode == "server"
+        assert qc.url == "http://qdrant:6333"
+        assert qc.api_key == "secret"
+
+    def test_parsed_from_toml(self, tmp_path):
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
+
+[qdrant]
+mode = "server"
+url = "http://myhost:6333"
+api_key = "mykey"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.qdrant.mode == "server"
+        assert config.qdrant.url == "http://myhost:6333"
+        assert config.qdrant.api_key == "mykey"
+
+
+class TestBackwardCompatibility:
+    """T010 — config with no [qdrant] section or default_exclude_patterns loads with defaults."""
+
+    def test_no_qdrant_section(self, tmp_path):
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.qdrant.mode == "embedded"
+        assert config.qdrant.url == "http://localhost:6333"
+
+    def test_no_include_default_exclude_patterns(self, tmp_path):
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
+exclude_patterns = [".git"]
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        # Should default to True
+        assert config.sources["s1"].include_default_exclude_patterns is True
+
+    def test_existing_valid_config_still_loads(self, tmp_path):
+        """The MVP-era VALID_CONFIG fixture still works without changes."""
+        path = _write_config(tmp_path / "config.toml", VALID_CONFIG)
+        config = load_config(path)
+        assert "test-src" in config.sources
+        assert config.qdrant.mode == "embedded"
+        assert config.sources["test-src"].include_default_exclude_patterns is True
+
+
+class TestCreateQdrantClient:
+    """T012 — verify embedded vs server mode client creation."""
+
+    def test_embedded_mode(self, tmp_path):
+        from kris.processing.embed import create_qdrant_client
+
+        config = KrisConfig(qdrant=QdrantConfig(mode="embedded"))
+        client = create_qdrant_client(config, qdrant_path=tmp_path / "qdrant")
+        # The embedded client should have been created with a path
+        assert client is not None
+
+    def test_server_mode(self):
+        from unittest.mock import MagicMock, patch
+
+        from kris.processing.embed import create_qdrant_client
+
+        config = KrisConfig(
+            qdrant=QdrantConfig(mode="server", url="http://testhost:6333", api_key="key123")
+        )
+        with patch("qdrant_client.QdrantClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+            client = create_qdrant_client(config)
+            mock_cls.assert_called_once_with(url="http://testhost:6333", api_key="key123")
+            assert client is mock_instance
+
+    def test_server_mode_connection_error(self):
+        """T035 — server mode with unreachable URL produces actionable error."""
+        from unittest.mock import MagicMock, patch
+
+        from kris.processing.embed import create_qdrant_client
+
+        config = KrisConfig(qdrant=QdrantConfig(mode="server", url="http://unreachable:6333"))
+        with patch("qdrant_client.QdrantClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.get_collections.side_effect = Exception("Connection refused")
+            mock_cls.return_value = mock_instance
+            with pytest.raises(ConnectionError, match="Cannot connect to Qdrant server"):
+                create_qdrant_client(config)

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from kris.catalog.tasks import get_task, get_tasks_by_status, update_task_status
 
 if TYPE_CHECKING:
+    from kris.config.schema import KrisConfig
     from kris.models.manager import ModelManager
     from kris.models.registry import ModelRegistry
 from kris.processing.chunk import chunk_code, chunk_markdown, chunk_text, save_chunks
@@ -19,6 +20,8 @@ from kris.processing.embed import create_qdrant_client, embed_chunks
 from kris.processing.extract import extract_for_content
 
 logger = logging.getLogger(__name__)
+
+LOG_BATCH_INTERVAL = 3000
 
 
 def _check_dependencies(conn: sqlite3.Connection, task) -> bool:
@@ -94,7 +97,7 @@ def execute_task(
             result = extract_for_content(conn, task.content_hash, data_dir)
             # Store extracted text in content table metadata (or just mark complete)
             # The text is available through the file — we just validated extraction works
-            logger.info("Extracted %d chars for %s", result.size, task.content_hash[:12])
+            logger.debug("Extracted %d chars for %s", result.size, task.content_hash[:12])
 
         elif task.task_type == "chunk":
             # Get the extracted text
@@ -110,7 +113,7 @@ def execute_task(
                 chunks = chunk_text(result.text, task.content_hash)
 
             saved = save_chunks(conn, chunks)
-            logger.info("Created %d chunks for %s", saved, task.content_hash[:12])
+            logger.debug("Created %d chunks for %s", saved, task.content_hash[:12])
 
         elif task.task_type == "embed":
             model_info = registry.get(task.model_hint or "embedding")
@@ -125,7 +128,7 @@ def execute_task(
                 qdrant_path,
                 client=qdrant_client,
             )
-            logger.info("Embedded %d chunks for %s", count, task.content_hash[:12])
+            logger.debug("Embedded %d chunks for %s", count, task.content_hash[:12])
 
         else:
             raise RuntimeError(f"Unknown task type: {task.task_type}")
@@ -151,6 +154,7 @@ def run_worker(
     model_manager: ModelManager,
     registry: ModelRegistry,
     on_progress: Callable[[int, int], None] | None = None,
+    config: KrisConfig | None = None,
 ) -> tuple[int, int]:
     """Process all queued tasks in dependency order.
 
@@ -159,10 +163,12 @@ def run_worker(
     """
     completed = 0
     failed = 0
+    _items_processed = 0
+    _last_batch_report = 0
 
     # Create a single Qdrant client for the entire run to avoid
     # per-task open/close overhead in embedded mode.
-    qdrant_client = create_qdrant_client(qdrant_path)
+    qdrant_client = create_qdrant_client(config, qdrant_path=qdrant_path)
 
     # Process in priority order, grouped by model_hint for affinity
     # First pass: non-model tasks (extract, chunk)
@@ -192,7 +198,18 @@ def run_worker(
                     completed += 1
                 else:
                     failed += 1
+                _items_processed += 1
                 made_progress = True
+
+                # Periodic batch summary at INFO level
+                if _items_processed - _last_batch_report >= LOG_BATCH_INTERVAL:
+                    logger.info(
+                        "Progress: %d tasks processed (%d completed, %d failed)",
+                        _items_processed,
+                        completed,
+                        failed,
+                    )
+                    _last_batch_report = _items_processed
 
                 if on_progress:
                     on_progress(completed, failed)
@@ -202,6 +219,13 @@ def run_worker(
 
     # Mark content as completed when all tasks are done
     _finalize_content(conn)
+
+    logger.info(
+        "Worker completed: %d total tasks (%d completed, %d failed)",
+        _items_processed,
+        completed,
+        failed,
+    )
 
     return completed, failed
 

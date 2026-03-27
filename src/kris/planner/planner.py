@@ -12,6 +12,9 @@ TASK_TYPE_EXTRACT = "extract"
 TASK_TYPE_CHUNK = "chunk"
 TASK_TYPE_EMBED = "embed"
 
+# File kinds eligible for text extraction. All others are skipped.
+EXTRACTABLE_KINDS = {"text", "code", "markdown", "config", "data"}
+
 
 def plan_tasks_for_content(
     conn: sqlite3.Connection,
@@ -19,6 +22,9 @@ def plan_tasks_for_content(
     embedding_model_hint: str = "embedding",
 ) -> list[Task]:
     """Generate the extract → chunk → embed task DAG for a content record.
+
+    If the file's kind is not extractable, mark the content as 'skipped'
+    and return no tasks.
 
     Returns the created tasks in dependency order.
     """
@@ -28,6 +34,19 @@ def plan_tasks_for_content(
         (content.content_hash,),
     ).fetchone()
     if existing and existing[0] > 0:
+        return []
+
+    # Check if any file referencing this content has a non-extractable kind
+    file_row = conn.execute(
+        "SELECT file_kind FROM file WHERE content_hash = ? LIMIT 1",
+        (content.content_hash,),
+    ).fetchone()
+    if file_row and file_row["file_kind"] not in EXTRACTABLE_KINDS:
+        conn.execute(
+            "UPDATE content SET processing_status = 'skipped' WHERE content_hash = ?",
+            (content.content_hash,),
+        )
+        conn.commit()
         return []
 
     extract_id = str(uuid.uuid4())
