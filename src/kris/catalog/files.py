@@ -276,7 +276,7 @@ def cleanup_missing_files(
     """Remove missing files and their associated artifacts.
 
     Returns a dict with: files_removed, chunks_removed, embeddings_removed,
-    qdrant_point_ids (list of Qdrant point IDs to delete externally).
+    opensearch_doc_ids (list of OpenSearch document IDs to delete externally).
     """
     conditions = ["f.visibility = 'missing'"]
     params: list = []
@@ -306,15 +306,15 @@ def cleanup_missing_files(
             "files_removed": 0,
             "chunks_removed": 0,
             "embeddings_removed": 0,
-            "qdrant_point_ids": [],
+            "opensearch_doc_ids": [],
         }
 
     file_ids = [r["id"] for r in file_rows]
     # Collect content hashes to check for orphaned content
     content_hashes = list({r["content_hash"] for r in file_rows})
 
-    # Collect Qdrant point IDs before deleting embeddings
-    qdrant_point_ids: list[str] = []
+    # Collect OpenSearch document IDs before deleting embeddings
+    opensearch_doc_ids: list[str] = []
     embeddings_removed = 0
     chunks_removed = 0
 
@@ -327,14 +327,14 @@ def cleanup_missing_files(
         if other_active > 0:
             continue
 
-        # Collect qdrant point IDs
+        # Collect OpenSearch document IDs before deleting embeddings
         point_rows = conn.execute(
-            "SELECT e.qdrant_point_id FROM embedding e "
+            "SELECT e.opensearch_doc_id FROM embedding e "
             "JOIN chunk c ON c.id = e.chunk_id "
             "WHERE c.content_hash = ?",
             (ch,),
         ).fetchall()
-        qdrant_point_ids.extend(r["qdrant_point_id"] for r in point_rows)
+        opensearch_doc_ids.extend(r["opensearch_doc_id"] for r in point_rows)
 
         if not dry_run:
             # Delete embeddings for chunks of this content
@@ -375,7 +375,7 @@ def cleanup_missing_files(
         "files_removed": files_removed,
         "chunks_removed": chunks_removed,
         "embeddings_removed": embeddings_removed,
-        "qdrant_point_ids": qdrant_point_ids,
+        "opensearch_doc_ids": opensearch_doc_ids,
     }
 
 

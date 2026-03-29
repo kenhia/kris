@@ -101,7 +101,7 @@ kris stores data in XDG-compliant locations:
 |----------|-------------|----------|
 | Config | `~/.config/kris/` | `config.toml` |
 | Data | `~/.local/share/kris/` | `catalog.db` (SQLite), `kris.log` |
-| Cache | `~/.cache/kris/` | `qdrant/` (vector store, embedded mode) |
+| Cache | `~/.cache/kris/` | Model caches, temporary files |
 
 ## Default Exclude Patterns
 
@@ -125,32 +125,98 @@ To see the effective exclude list for each source:
 uv run kris config validate
 ```
 
-## Qdrant Server Mode
+## OpenSearch Setup
 
-By default kris uses Qdrant in embedded mode (data stored locally). For
-large collections (50K+ files) or shared access, switch to a Qdrant
-server:
+kris uses OpenSearch for vector search (k-NN). You need a running
+OpenSearch instance (2.x with k-NN plugin).
 
-### Start Qdrant via Docker
+### Start OpenSearch via Docker Compose
 
 ```bash
-docker run -d --name qdrant \
-  -p 6333:6333 -p 6334:6334 \
-  -v qdrant_storage:/qdrant/storage \
-  qdrant/qdrant:latest
+# See https://opensearch.org/docs/latest/install-and-configure/install-opensearch/docker/
+docker compose -f ~/opensearch/docker-compose.yml up -d
 ```
 
-### Configure kris to use the server
+### Configure kris to connect
 
 ```toml
-[qdrant]
-mode = "server"
-url = "http://localhost:6333"
-# api_key = "your-key"  # optional, for Qdrant Cloud
+[opensearch]
+url = "https://localhost:9200"
+username = "admin"
+password = "your-password"
+verify_certs = false   # set true if using proper TLS certificates
+index_prefix = "kris"  # creates kris_chunks index
 ```
 
-Embedded mode is the default when `[qdrant]` is absent or
-`mode = "embedded"`.
+The password can also be set via the `KRIS_OPENSEARCH_PASSWORD`
+environment variable (useful for CI or secrets management).
+
+### Verify the connection
+
+```bash
+uv run kris config validate
+```
+
+This checks configuration syntax and tests OpenSearch connectivity,
+reporting cluster health, index status, and document count.
+
+---
+
+## Migrating from Qdrant to OpenSearch
+
+If you have an existing kris installation using Qdrant, follow these
+steps to migrate to OpenSearch:
+
+### Prerequisites
+
+- OpenSearch 2.x running and accessible
+- Existing kris installation with indexed content
+
+### Migration Steps
+
+1. **Update your config.toml** — Replace the `[qdrant]` section with
+   `[opensearch]`:
+
+   ```toml
+   # Remove this:
+   # [qdrant]
+   # mode = "embedded"
+
+   # Add this:
+   [opensearch]
+   url = "https://localhost:9200"
+   username = "admin"
+   password = "your-password"
+   verify_certs = false
+   index_prefix = "kris"
+   ```
+
+2. **Validate configuration**:
+
+   ```bash
+   uv run kris config validate
+   ```
+
+3. **Re-index all content** — This re-embeds all content into OpenSearch:
+
+   ```bash
+   uv run kris index
+   ```
+
+   Existing SQLite catalog data (files, chunks) is preserved. Only
+   the vector embeddings are regenerated in OpenSearch.
+
+4. **Verify the migration**:
+
+   ```bash
+   uv run kris status
+   uv run kris diagnose
+   uv run kris retrieve "test query"
+   ```
+
+5. **Clean up** — Once verified, you can safely remove the old Qdrant
+   data directory (`~/.cache/kris/qdrant/`) and the `[qdrant]` config
+   section if still present.
 
 ## VRAM Calibration
 

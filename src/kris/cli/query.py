@@ -62,12 +62,11 @@ def query(
             conn=conn,
             model_manager=model_manager,
             registry=registry,
-            qdrant_path=config.qdrant_path,
+            config=config,
             top_k=top_k,
             source_filter=source,
             kind_filter=kind,
             retrieval_only=False,
-            config=config,
         )
 
         if json_output:
@@ -145,12 +144,11 @@ def retrieve(
             conn=conn,
             model_manager=model_manager,
             registry=registry,
-            qdrant_path=config.qdrant_path,
+            config=config,
             top_k=top_k,
             source_filter=source,
             kind_filter=kind,
             retrieval_only=True,
-            config=config,
         )
 
         if json_output:

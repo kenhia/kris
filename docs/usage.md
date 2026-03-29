@@ -62,7 +62,7 @@ Shows what would be processed without making changes.
    for new or changed content.
 3. **Process** — The worker executes tasks: extracts text, chunks it
    using file-kind-aware strategies, and generates embeddings stored
-   in Qdrant.
+   in OpenSearch.
 
 Files with identical content across sources share processing artifacts
 (content-addressed dedup).

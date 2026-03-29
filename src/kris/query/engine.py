@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kris.query.retriever import RetrievalResult, retrieve
@@ -32,12 +31,11 @@ def query(
     conn: sqlite3.Connection,
     model_manager: ModelManager,
     registry: ModelRegistry,
-    qdrant_path: str | Path,
+    config: KrisConfig,
     top_k: int = 10,
     source_filter: str | None = None,
     kind_filter: str | None = None,
     retrieval_only: bool = False,
-    config: KrisConfig | None = None,
 ) -> QueryResult:
     """Run a query: retrieve relevant chunks and optionally synthesize an answer.
 
@@ -52,11 +50,10 @@ def query(
         conn=conn,
         model_manager=model_manager,
         model_info=embedding_info,
-        qdrant_path=qdrant_path,
+        config=config,
         top_k=top_k,
         source_filter=source_filter,
         kind_filter=kind_filter,
-        config=config,
     )
 
     if retrieval_only:

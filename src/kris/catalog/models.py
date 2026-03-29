@@ -89,8 +89,8 @@ class Embedding:
     id: str
     chunk_id: str
     model_id: str
-    collection_name: str
-    qdrant_point_id: str
+    index_name: str
+    opensearch_doc_id: str
 
 
 @dataclass

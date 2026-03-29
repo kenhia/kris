@@ -1,12 +1,12 @@
-"""Embedding pipeline — encode chunks and write to Qdrant + SQLite."""
+"""Embedding pipeline — encode chunks and write to OpenSearch + SQLite."""
 
 from __future__ import annotations
 
 import logging
 import sqlite3
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from kris.catalog.models import Embedding
 
@@ -17,57 +17,104 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-COLLECTION_NAME = "kris_chunks"
 
+def create_opensearch_client(config: KrisConfig) -> Any:
+    """Create an OpenSearch client from configuration.
 
-def create_qdrant_client(
-    config: KrisConfig | None = None,
-    qdrant_path: Path | None = None,
-) -> Any:
-    """Create a QdrantClient based on configuration.
-
-    In server mode, connects to the configured URL.
-    In embedded mode (default), uses qdrant_path for local file-based storage.
+    Supports HTTPS with username/password auth and optional cert verification.
+    Reads password from KRIS_OPENSEARCH_PASSWORD env var if config password is empty.
     """
-    from qdrant_client import QdrantClient
+    from opensearchpy import OpenSearch
 
-    if config is not None and config.qdrant.mode == "server":
-        kwargs: dict[str, Any] = {"url": config.qdrant.url}
-        if config.qdrant.api_key:
-            kwargs["api_key"] = config.qdrant.api_key
-        try:
-            client = QdrantClient(**kwargs)
-            # Verify connection works
-            client.get_collections()
-            return client
-        except Exception as e:
+    parsed = urlparse(config.opensearch.url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 9200
+    use_ssl = parsed.scheme == "https"
+
+    kwargs: dict[str, Any] = {
+        "hosts": [{"host": host, "port": port}],
+        "use_ssl": use_ssl,
+        "verify_certs": config.opensearch.verify_certs,
+        "ssl_show_warn": False,
+    }
+
+    if config.opensearch.username:
+        kwargs["http_auth"] = (config.opensearch.username, config.opensearch.password)
+
+    try:
+        client = OpenSearch(**kwargs)
+        # Verify connectivity
+        info = client.info()
+        logger.debug("Connected to OpenSearch %s", info.get("version", {}).get("number", "?"))
+        return client
+    except Exception as e:
+        error_str = str(e)
+        if "401" in error_str or "Unauthorized" in error_str:
             raise ConnectionError(
-                f"Cannot connect to Qdrant server at {config.qdrant.url}. "
-                f"Is the server running? Error: {e}\n"
-                f"Tip: Start Qdrant with 'docker run -p 6333:6333 qdrant/qdrant' "
-                f'or set [qdrant] mode = "embedded" in config.'
+                f"OpenSearch authentication failed at {config.opensearch.url}. "
+                "Check username/password in config.toml or KRIS_OPENSEARCH_PASSWORD env var."
             ) from e
-
-    # Embedded mode
-    path = qdrant_path
-    if path is None and config is not None:
-        path = config.qdrant_path
-    if path is None:
-        raise ValueError("qdrant_path is required for embedded mode")
-    return QdrantClient(path=str(path))
+        raise ConnectionError(
+            f"Cannot connect to OpenSearch at {config.opensearch.url}. "
+            "Is the service running? Check: docker ps | grep opensearch"
+        ) from e
 
 
-def ensure_collection(client: Any, dimensions: int) -> None:
-    """Create the Qdrant collection if it doesn't exist."""
-    from qdrant_client.models import Distance, VectorParams
+def ensure_index(client: Any, config: KrisConfig, dimensions: int) -> None:
+    """Create the kris_chunks index with k-NN mapping if it doesn't exist.
 
-    collections = [c.name for c in client.get_collections().collections]
-    if COLLECTION_NAME not in collections:
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=dimensions, distance=Distance.COSINE),
-        )
-        logger.info("Created Qdrant collection '%s' (dim=%d)", COLLECTION_NAME, dimensions)
+    If the index exists, verifies the embedding dimension matches.
+    """
+    index_name = config.opensearch_index
+
+    if client.indices.exists(index=index_name):
+        # Verify existing mapping dimensions match
+        mapping = client.indices.get_mapping(index=index_name)
+        try:
+            props = mapping[index_name]["mappings"]["properties"]
+            existing_dim = props["embedding"]["dimension"]
+            if existing_dim != dimensions:
+                raise ValueError(
+                    f"OpenSearch index '{index_name}' exists with incompatible mapping "
+                    f"(expected {dimensions}-dim vectors, found {existing_dim}). "
+                    f"Delete the index or use a different index_prefix."
+                )
+        except (KeyError, TypeError):
+            pass  # No embedding field yet or unexpected structure — proceed
+        return
+
+    body = {
+        "settings": {
+            "index": {
+                "knn": True,
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+            }
+        },
+        "mappings": {
+            "properties": {
+                "embedding": {
+                    "type": "knn_vector",
+                    "dimension": dimensions,
+                    "method": {
+                        "name": "hnsw",
+                        "space_type": "cosinesimil",
+                        "engine": "lucene",
+                    },
+                },
+                "content": {"type": "text"},
+                "content_hash": {"type": "keyword"},
+                "chunk_id": {"type": "keyword"},
+                "chunk_index": {"type": "integer"},
+                "chunking_strategy": {"type": "keyword"},
+                "file_kind": {"type": "keyword"},
+                "source_id": {"type": "keyword"},
+                "file_path": {"type": "keyword"},
+            }
+        },
+    }
+    client.indices.create(index=index_name, body=body)
+    logger.info("Created OpenSearch index '%s' (dim=%d)", index_name, dimensions)
 
 
 def embed_chunks(
@@ -75,15 +122,15 @@ def embed_chunks(
     content_hash: str,
     model_manager: ModelManager,
     model_info: ModelInfo,
-    qdrant_path: Path,
+    config: KrisConfig,
     *,
     client: Any | None = None,
 ) -> int:
-    """Embed all chunks for a content record and write to Qdrant + SQLite.
+    """Embed all chunks for a content record and write to OpenSearch + SQLite.
 
     Returns the number of embeddings created.
     """
-    from qdrant_client.models import PointStruct
+    from opensearchpy import helpers
 
     # Get chunks for this content
     rows = conn.execute(
@@ -101,74 +148,95 @@ def embed_chunks(
     texts = [row["content"] for row in rows]
     embeddings = model.encode(texts, show_progress_bar=False)
 
-    # Ensure collection exists
+    # Ensure index exists
     dimensions = model_info.dimensions or len(embeddings[0])
     if client is None:
-        client = create_qdrant_client(qdrant_path=qdrant_path)
-    ensure_collection(client, dimensions)
+        client = create_opensearch_client(config)
+    ensure_index(client, config, dimensions)
 
-    points = []
+    index_name = config.opensearch_index
+
+    # Look up file metadata for enriching OpenSearch documents
+    file_meta = conn.execute(
+        "SELECT f.file_kind, f.source_id, f.path "
+        "FROM file f WHERE f.content_hash = ? AND f.visibility = 'active' LIMIT 1",
+        (content_hash,),
+    ).fetchone()
+    file_kind = file_meta["file_kind"] if file_meta else "unknown"
+    source_id = file_meta["source_id"] if file_meta else ""
+    file_path = file_meta["path"] if file_meta else ""
+
+    actions = []
     embedding_records = []
 
-    for _i, (row, vector) in enumerate(zip(rows, embeddings, strict=True)):
-        point_id = str(uuid.uuid4())
-        points.append(
-            PointStruct(
-                id=point_id,
-                vector=vector.tolist(),
-                payload={
+    for row, vector in zip(rows, embeddings, strict=True):
+        doc_id = str(uuid.uuid4())
+        actions.append(
+            {
+                "_index": index_name,
+                "_id": doc_id,
+                "_source": {
+                    "embedding": vector.tolist(),
+                    "content": row["content"],
                     "content_hash": content_hash,
                     "chunk_id": row["id"],
                     "chunk_index": row["chunk_index"],
                     "chunking_strategy": row["chunking_strategy"],
+                    "file_kind": file_kind,
+                    "source_id": source_id,
+                    "file_path": file_path,
                 },
-            )
+            }
         )
         embedding_records.append(
             Embedding(
                 id=str(uuid.uuid4()),
                 chunk_id=row["id"],
                 model_id=model_info.model_id,
-                collection_name=COLLECTION_NAME,
-                qdrant_point_id=point_id,
+                index_name=index_name,
+                opensearch_doc_id=doc_id,
             )
         )
 
-    if points:
-        client.upsert(collection_name=COLLECTION_NAME, points=points)
+    if actions:
+        success, errors = helpers.bulk(client, actions, raise_on_error=False)
+        if errors:
+            logger.warning(
+                "Indexed %d/%d documents. %d failed: %s",
+                success,
+                len(actions),
+                len(errors),
+                errors[0] if errors else "",
+            )
 
     # Write embedding records to SQLite
     for emb in embedding_records:
         conn.execute(
             """INSERT OR REPLACE INTO embedding
-               (id, chunk_id, model_id, collection_name, qdrant_point_id)
+               (id, chunk_id, model_id, index_name, opensearch_doc_id)
                VALUES (?, ?, ?, ?, ?)""",
-            (emb.id, emb.chunk_id, emb.model_id, emb.collection_name, emb.qdrant_point_id),
+            (emb.id, emb.chunk_id, emb.model_id, emb.index_name, emb.opensearch_doc_id),
         )
     conn.commit()
 
     return len(embedding_records)
 
 
-def delete_points(qdrant_path: Path, point_ids: list[str]) -> int:
-    """Delete points from Qdrant by their IDs.
+def delete_documents(client: Any, index_name: str, doc_ids: list[str]) -> int:
+    """Delete documents from OpenSearch by their IDs.
 
-    Returns the number of points requested for deletion.
+    Returns the number of documents requested for deletion.
     """
-    if not point_ids:
+    if not doc_ids:
         return 0
 
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import PointIdsList
+    deleted = 0
+    for doc_id in doc_ids:
+        try:
+            client.delete(index=index_name, id=doc_id, ignore=[404])
+            deleted += 1
+        except Exception:
+            logger.warning("Failed to delete OpenSearch document %s", doc_id)
 
-    client = QdrantClient(path=str(qdrant_path))
-    collections = [c.name for c in client.get_collections().collections]
-    if COLLECTION_NAME not in collections:
-        return 0
-
-    client.delete(
-        collection_name=COLLECTION_NAME,
-        points_selector=PointIdsList(points=point_ids),  # type: ignore[arg-type]
-    )
-    logger.info("Deleted %d points from Qdrant collection '%s'", len(point_ids), COLLECTION_NAME)
-    return len(point_ids)
+    logger.info("Deleted %d documents from OpenSearch index '%s'", deleted, index_name)
+    return deleted

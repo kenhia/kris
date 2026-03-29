@@ -107,8 +107,8 @@ erDiagram
         string id PK
         string chunk_id FK
         string model_id FK
-        string collection_name
-        string qdrant_point_id
+        string index_name
+        string opensearch_doc_id
     }
 
     MODEL_REGISTRY {
@@ -470,17 +470,17 @@ The `metadata` JSON field stores structural context extracted during chunking. F
 
 ## Embedding
 
-Tracks the relationship between chunks and their vector representations in Qdrant.
+Tracks the relationship between chunks and their vector representations in OpenSearch.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `TEXT PK` | UUID |
 | `chunk_id` | `TEXT FK` | Source chunk |
 | `model_id` | `TEXT FK` | Which embedding model (FK to MODEL_REGISTRY) |
-| `collection_name` | `TEXT` | Qdrant collection name |
-| `qdrant_point_id` | `TEXT` | Point ID in Qdrant |
+| `index_name` | `TEXT` | OpenSearch index name |
+| `opensearch_doc_id` | `TEXT` | Document ID in OpenSearch |
 
-The actual vector data lives in Qdrant. This table provides the linkage back to the relational model for metadata enrichment during retrieval.
+The actual vector data lives in OpenSearch. This table provides the linkage back to the relational model for metadata enrichment during retrieval.
 
 ---
 
@@ -577,35 +577,35 @@ max_tokens = 512
 
 ---
 
-## Qdrant Payload Schema
+## OpenSearch Document Schema
 
-Each point stored in Qdrant carries a payload for filtered search:
+Each document stored in OpenSearch contains the embedding vector alongside content and metadata:
 
 ```json
 {
+    "embedding": [0.1, 0.2, ...],
+    "content": "chunk text content",
     "content_hash": "abc123...",
-    "file_kind": "code",
+    "chunk_id": "uuid",
     "chunk_index": 3,
-    "function_name": "process_file",
-    "class_name": null,
-    "heading": null,
-    "tags": ["rust", "processing"],
-    "parent_content_hash": "def789..."
+    "chunking_strategy": "code",
+    "file_kind": "code",
+    "source_id": "my-source",
+    "file_path": "src/main.py"
 }
 ```
 
-**Indexed payload fields** (for filtered search):
-- `content_hash` — join back to SQLite catalog for file paths, source IDs, and dedup-aware queries
-- `parent_content_hash` — walk up context chain for retrieval enrichment
-- `file_kind` — filter by file type
-- `tags` — keyword filter
-- `function_name`, `class_name` — code-specific filters
+**Indexed fields** (for pre-filtered k-NN search):
+- `source_id` (keyword) — filter by source
+- `file_kind` (keyword) — filter by file type
+- `content_hash` (keyword) — join back to SQLite for dedup-aware queries
+- `chunk_id` (keyword) — unique chunk reference
 
-**Note**: `source_id` and `path` are intentionally omitted from the Qdrant payload.
-Because content-addressed dedup means a single `content_hash` may map to multiple
-files across multiple sources, these fields are resolved at query time by joining
-`content_hash` back to the SQLite `file` table. This ensures all file locations
-are returned for deduplicated content.
+**k-NN configuration:**
+- Engine: Lucene
+- Algorithm: HNSW
+- Space type: cosinesimil
+- Dimensions: 768 (BAAI/bge-base-en-v1.5)
 
 ---
 
@@ -644,9 +644,15 @@ vram_safety_margin = 0.80
 prefer_local = true         # always try local first; remote only as fallback
 
 [storage]
-qdrant_path = "$XDG_CACHE_HOME/kris/qdrant"
 sqlite_path = "$XDG_STATE_HOME/kris/kris.db"
 blob_path = "$XDG_DATA_HOME/kris/blobs"
+
+[opensearch]
+url = "https://localhost:9200"
+username = "admin"
+password = ""
+verify_certs = false
+index_prefix = "kris"
 
 [retention]
 auto_delete = false         # never auto-delete artifacts for missing files

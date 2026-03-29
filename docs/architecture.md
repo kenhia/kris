@@ -51,7 +51,7 @@ graph TB
     end
 
     subgraph Storage["Artifact Storage"]
-        QDRANT["Qdrant<br/>(Vectors)"]
+        OPENSEARCH["OpenSearch<br/>(Vectors + Content)"]
         SQLITE["SQLite<br/>(Metadata + Artifacts)"]
         BLOBS["Blob Store<br/>(Thumbnails, Cached Extractions)"]
     end
@@ -84,12 +84,12 @@ graph TB
 
     EXTRACT --> SQLITE
     CHUNK --> SQLITE
-    EMBED --> QDRANT
+    EMBED --> OPENSEARCH
     SUMMARIZE --> SQLITE
     CAPTION --> SQLITE
     CLASSIFY --> SQLITE
 
-    QUERY --> QDRANT
+    QUERY --> OPENSEARCH
     QUERY --> SQLITE
     SYNTH --> QUERY
     API --> SYNTH
@@ -331,7 +331,7 @@ Processing outputs are stored in typed backends appropriate to their access patt
 
 | Artifact Type | Storage | Rationale |
 |---------------|---------|-----------|
-| Vectors/embeddings | Qdrant | Purpose-built for vector similarity search |
+| Vectors/embeddings | OpenSearch (k-NN) | Vector similarity search with pre-filtering |
 | File metadata | SQLite | Relational queries, joins, aggregation |
 | Chunk records | SQLite | Relational, linked to files |
 | Summaries | SQLite | Queryable text, linked to files |
@@ -340,15 +340,15 @@ Processing outputs are stored in typed backends appropriate to their access patt
 | Thumbnails | Filesystem (blob store) | Binary blobs, not queryable |
 | Processing state | SQLite | Transactional consistency |
 
-**Qdrant collection strategy:**
-- Named vector spaces per embedding model (e.g., `text`, `code`)
-- Payload includes: `content_hash`, `chunk_index`, `file_kind`
-- File paths and source IDs resolved at query time by joining `content_hash` back to SQLite (ensures deduped content returns all associated paths)
-- Enables filtered search (by file kind; source/path filtering via SQLite join)
+**OpenSearch index strategy:**
+- Single `kris_chunks` index with k-NN enabled (Lucene HNSW, cosinesimil)
+- Documents include: embedding vector, content text, `content_hash`, `chunk_id`, `chunk_index`, `file_kind`, `source_id`, `file_path`
+- Pre-filtered k-NN search by `source_id` and `file_kind` via OpenSearch query DSL
+- File paths and source names enriched at query time from SQLite
 
-**Qdrant deployment modes:**
-- **Embedded** (default): Qdrant runs in-process with data stored locally (`~/.cache/kris/qdrant/`). Zero configuration; suitable for personal use up to ~50K files.
-- **Server**: Qdrant runs as a separate service (e.g., Docker). Configured via `[qdrant] mode = "server"` in `config.toml`. Required for larger collections or shared access. The `create_qdrant_client(config)` factory selects the mode automatically.
+**OpenSearch deployment:**
+- External service (Docker recommended). Configured via `[opensearch]` in `config.toml` with URL, username/password, TLS options.
+- The `create_opensearch_client(config)` factory creates a client from config with HTTPS, auth, and connection error handling.
 
 ---
 
@@ -363,7 +363,7 @@ sequenceDiagram
     participant API as API Service
     participant QE as Query Engine
     participant R as Retriever
-    participant QD as Qdrant
+    participant QD as OpenSearch
     participant SQ as SQLite
     participant LLM as LLM Synthesis
 
@@ -405,7 +405,7 @@ XDG-compliant configuration following krag's established pattern:
 |----------|----------|
 | `$XDG_CONFIG_HOME/kris/config.toml` | Sources, models, pipeline settings |
 | `$XDG_DATA_HOME/kris/` | SQLite catalog, logs, blob store |
-| `$XDG_CACHE_HOME/kris/` | Downloaded models, Qdrant data |
+| `$XDG_CACHE_HOME/kris/` | Downloaded models |
 
 ### Observability
 
@@ -441,7 +441,7 @@ XDG-compliant configuration following krag's established pattern:
 | Code chunking | tree-sitter | AST-aware chunking for source code files |
 | API service (Phase 2) | Python (FastAPI) | Proven pattern from krag, async support |
 | CLI | Python (Typer + Rich) | Proven pattern from krag |
-| Vector store | Qdrant | Proven in krag, named vectors, filtered search |
+| Vector store | OpenSearch (k-NN) | Lucene HNSW engine, pre-filtered ANN search, stores content alongside vectors |
 | Metadata store | SQLite | Simple, reliable, no server process. Shared between Rust scanner and Python core. |
 | Configuration | TOML | Proven in krag, human-readable |
 
@@ -463,7 +463,7 @@ graph TB
         EXT["Text Extraction"]
         CHK["Text/Code Chunking"]
         EMB["Embedding (single model)"]
-        QD["Qdrant Storage"]
+        QD["OpenSearch (k-NN)"]
         QE["Query Engine + LLM Synthesis"]
         CLIM["CLI"]
     end
@@ -503,7 +503,7 @@ graph TB
 - Per-path scan schedule configuration schema (schedule execution deferred to Phase 2)
 - Extract and chunk text, code, and markdown files
 - Embed chunks with a single embedding model
-- Store vectors in Qdrant with file metadata
+- Store vectors in OpenSearch with file metadata and content
 - Content-addressed dedup: identical files across paths share artifacts
 - Metadata recorded for all files, including those skipped for processing
 - Query via CLI with semantic search + LLM synthesis (knowledge base mode)
@@ -558,7 +558,7 @@ kris is the successor to krag — a "lessons learned and expand" next generation
 | `LLMPool` (hot-swap, VRAM management) | Model Manager |
 | `TextChunker` (file-type-aware splitting) | Chunking pipeline |
 | `EmbeddingOrchestrator` (multi-model) | Embedding pipeline |
-| `QdrantVectorStore` (named vectors, filtered ops) | Vector storage |
+| OpenSearch k-NN (Lucene HNSW, pre-filtered search) | Vector storage |
 | Plugin system (entry points, ABC) | Plugin system (future phase) |
 | Collection routing (8-level precedence) | Task planner file-kind routing |
 | Retrieval post-processing (RRF, dedup, boosting) | Query engine |

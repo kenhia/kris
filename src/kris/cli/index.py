@@ -49,7 +49,6 @@ def index(
         raise typer.Exit(1) from None
 
     db_path = config.db_path
-    qdrant_path = config.qdrant_path
     data_dir = Path(config.data_dir)
 
     conn = get_connection(db_path)
@@ -118,18 +117,15 @@ def index(
                     completed, failed = run_worker(
                         conn,
                         data_dir,
-                        qdrant_path,
+                        config,
                         model_manager,
                         registry,
                         on_progress=on_progress,
-                        config=config,
                     )
                     total_tasks["completed"] = completed
                     total_tasks["failed"] = failed
             else:
-                completed, failed = run_worker(
-                    conn, data_dir, qdrant_path, model_manager, registry, config=config
-                )
+                completed, failed = run_worker(conn, data_dir, config, model_manager, registry)
                 total_tasks["completed"] = completed
                 total_tasks["failed"] = failed
 

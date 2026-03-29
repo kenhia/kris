@@ -16,7 +16,7 @@ grounded in the indexed content.
 ### US1: Scan and Index Local Files (P1)
 
 Scan configured directories, discover files, extract text, chunk
-content, and embed chunks into Qdrant. All files are cataloged with
+content, and embed chunks into OpenSearch. All files are cataloged with
 metadata regardless of processing eligibility. Incremental — only
 new or changed files are reprocessed.
 
@@ -78,7 +78,7 @@ user explicitly cleans them up via `kris cleanup` with selectors
 | FR-011 | Extract text from text, code, markdown, and config files |
 | FR-012 | Chunk text using file-kind-aware strategies (AST for code) |
 | FR-013 | Generate vector embeddings per chunk |
-| FR-014 | Store embeddings in Qdrant; resolve paths via SQLite join |
+| FR-014 | Store embeddings in OpenSearch; resolve paths via SQLite join |
 | FR-015 | Persist chunk records in SQLite |
 | FR-016 | Task planner generates extract → chunk → embed tasks by kind |
 | FR-017 | Order tasks to minimize model load/unload cycles |
@@ -140,11 +140,13 @@ name = "my-local-llm"
 model_path = "/path/to/model.gguf"
 vram_gb = 8.0
 
-# Qdrant vector store (optional — defaults to embedded mode)
-[qdrant]
-mode = "embedded"            # "embedded" or "server"
-# url = "http://localhost:6333"  # required when mode = "server"
-# api_key = ""                   # optional, for Qdrant Cloud
+# OpenSearch vector store
+[opensearch]
+url = "https://localhost:9200"
+username = "admin"
+password = ""
+verify_certs = false
+index_prefix = "kris"
 
 # Storage (optional — defaults to XDG paths)
 data_dir = ""     # default: ~/.local/share/kris
@@ -161,7 +163,7 @@ log_level = "INFO"
 | **Content** | File substance identified by SHA-256 hash; owns artifacts |
 | **Task** | Processing work unit (extract, chunk, embed) with retry |
 | **Chunk** | Segment of extracted text with offsets and strategy metadata |
-| **Embedding** | Chunk ↔ Qdrant vector linkage with model identifier |
+| **Embedding** | Chunk ↔ OpenSearch vector linkage with model identifier |
 
 ## Data Storage
 
@@ -169,7 +171,7 @@ log_level = "INFO"
 |----------|-------------|----------|
 | Config | `~/.config/kris/` | `config.toml` |
 | Data | `~/.local/share/kris/` | `catalog.db`, `kris.log` |
-| Cache | `~/.cache/kris/` | `qdrant/` (vector store) |
+| Cache | `~/.cache/kris/` | (vector data stored in OpenSearch) |
 
 ## Technology Stack
 
@@ -179,7 +181,7 @@ log_level = "INFO"
 | Scanner ↔ Core IPC | SQLite (shared catalog.db) |
 | Processing & CLI | Python (Typer, Rich, sentence-transformers, llama-cpp-python) |
 | Code chunking | tree-sitter |
-| Vector store | Qdrant (embedded or server mode) |
+| Vector store | OpenSearch (external service) |
 | Metadata store | SQLite (WAL mode) |
 | Configuration | TOML |
 
@@ -217,7 +219,7 @@ All commands support `--json` for structured output. Global flags:
 ## Assumptions
 
 - NVIDIA GPU with 16 GB VRAM (4090 Super) for model loading
-- Qdrant runs embedded locally
+- OpenSearch runs as an external service
 - Scanner (Rust) and core (Python) share SQLite catalog
 - NAS paths mounted at `/gratch` treated as local sources
 - Default embedding model: BAAI/bge-base-en-v1.5 (768 dimensions)

@@ -63,7 +63,6 @@ class TestLogBatchInterval:
         _add_file_and_tasks(worker_db, 0)
         data_dir = tmp_path / "data"
         data_dir.mkdir()
-        qdrant_path = tmp_path / "qdrant"
 
         mock_manager = MagicMock()
         mock_registry = MagicMock()
@@ -75,10 +74,11 @@ class TestLogBatchInterval:
             patch("kris.processing.worker.chunk_text", return_value=[]),
             patch("kris.processing.worker.save_chunks", return_value=0),
             patch("kris.processing.worker.embed_chunks", return_value=0),
-            patch("kris.processing.worker.create_qdrant_client"),
+            patch("kris.processing.worker.create_opensearch_client"),
         ):
             mock_extract.return_value = MagicMock(text="hello", size=5)
-            run_worker(worker_db, data_dir, qdrant_path, mock_manager, mock_registry)
+            mock_config = MagicMock()
+            run_worker(worker_db, data_dir, mock_config, mock_manager, mock_registry)
 
         # Per-file messages should be DEBUG, not INFO
         info_records = [r for r in caplog.records if r.levelno == logging.INFO]
@@ -106,7 +106,6 @@ class TestFinalSummary:
         _add_file_and_tasks(worker_db, 0)
         data_dir = tmp_path / "data"
         data_dir.mkdir()
-        qdrant_path = tmp_path / "qdrant"
 
         mock_manager = MagicMock()
         mock_registry = MagicMock()
@@ -118,10 +117,11 @@ class TestFinalSummary:
             patch("kris.processing.worker.chunk_text", return_value=[]),
             patch("kris.processing.worker.save_chunks", return_value=0),
             patch("kris.processing.worker.embed_chunks", return_value=0),
-            patch("kris.processing.worker.create_qdrant_client"),
+            patch("kris.processing.worker.create_opensearch_client"),
         ):
             mock_extract.return_value = MagicMock(text="hello", size=5)
-            run_worker(worker_db, data_dir, qdrant_path, mock_manager, mock_registry)
+            mock_config = MagicMock()
+            run_worker(worker_db, data_dir, mock_config, mock_manager, mock_registry)
 
         # There should be a final summary at INFO level
         info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]

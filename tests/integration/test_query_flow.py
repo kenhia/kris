@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from kris.catalog.db import get_connection
+from kris.config.schema import KrisConfig, OpenSearchConfig
 from kris.models.manager import ModelManager
 from kris.models.registry import ModelRegistry
 from kris.processing.chunk import chunk_text, save_chunks
@@ -80,28 +81,48 @@ def indexed_env(tmp_path, scanner_binary):
 
 
 class TestQueryFlow:
-    def test_retrieval_only_mode(self, indexed_env):
-        """Retrieve chunks without LLM synthesis using mocked embedding search."""
+    def test_retrieval_only_mode(self, indexed_env, tmp_path):
+        """Retrieve chunks without LLM synthesis using mocked OpenSearch search."""
         conn = get_connection(indexed_env["db_path"])
 
         # Get actual chunk IDs from DB
         chunks_in_db = conn.execute("SELECT id, content_hash FROM chunk").fetchall()
         assert len(chunks_in_db) > 0
 
-        # Build mock qdrant points from real chunk data
-        mock_points = []
+        # Build mock OpenSearch search response
+        hits = []
         for i, c in enumerate(chunks_in_db[:3]):
-            pt = MagicMock()
-            pt.id = f"pt-{i}"
-            pt.score = 0.9 - i * 0.1
-            pt.payload = {"chunk_id": c["id"], "content_hash": c["content_hash"], "chunk_index": i}
-            mock_points.append(pt)
+            chunk_row = conn.execute("SELECT * FROM chunk WHERE id = ?", (c["id"],)).fetchone()
+            file_row = conn.execute(
+                "SELECT * FROM file WHERE content_hash = ? LIMIT 1", (c["content_hash"],)
+            ).fetchone()
+            hits.append(
+                {
+                    "_id": f"doc-{i}",
+                    "_score": 0.9 - i * 0.1,
+                    "_source": {
+                        "chunk_id": c["id"],
+                        "content": chunk_row["content"],
+                        "content_hash": c["content_hash"],
+                        "chunk_index": i,
+                        "file_kind": file_row["file_kind"] if file_row else "text",
+                        "source_id": file_row["source_id"] if file_row else "src-1",
+                        "file_path": file_row["path"] if file_row else "",
+                    },
+                }
+            )
 
         mock_client = MagicMock()
-        mock_client.query_points.return_value.points = mock_points
+        mock_client.indices.exists.return_value = True
+        mock_client.search.return_value = {"hits": {"total": {"value": len(hits)}, "hits": hits}}
 
         mock_model = MagicMock()
         mock_model.encode.return_value = np.array([[0.1] * 768])
+
+        config = KrisConfig(
+            data_dir=str(tmp_path),
+            opensearch=OpenSearchConfig(url="https://localhost:9200"),
+        )
 
         registry = ModelRegistry()
         registry._models["embedding"] = MagicMock(
@@ -112,14 +133,14 @@ class TestQueryFlow:
 
         with (
             patch.object(manager, "load_embedding_model", return_value=mock_model),
-            patch("qdrant_client.QdrantClient", return_value=mock_client),
+            patch("kris.processing.embed.create_opensearch_client", return_value=mock_client),
         ):
             result = query(
                 question="what does this project do?",
                 conn=conn,
                 model_manager=manager,
                 registry=registry,
-                qdrant_path="/tmp/qdrant",
+                config=config,
                 top_k=5,
                 retrieval_only=True,
             )
@@ -127,28 +148,44 @@ class TestQueryFlow:
         assert result.retrieval_only is True
         assert result.answer is None
         assert len(result.results) > 0
-        # Results should have file metadata
         for r in result.results:
             assert r.file_path
             assert r.source_id == "src-1"
         conn.close()
 
-    def test_full_query_with_mocked_llm(self, indexed_env):
+    def test_full_query_with_mocked_llm(self, indexed_env, tmp_path):
         """Full query flow with mocked embedding search and LLM synthesis."""
         conn = get_connection(indexed_env["db_path"])
 
         chunks_in_db = conn.execute("SELECT id, content_hash FROM chunk").fetchall()
 
-        mock_points = []
+        hits = []
         for i, c in enumerate(chunks_in_db[:2]):
-            pt = MagicMock()
-            pt.id = f"pt-{i}"
-            pt.score = 0.9 - i * 0.1
-            pt.payload = {"chunk_id": c["id"], "content_hash": c["content_hash"], "chunk_index": i}
-            mock_points.append(pt)
+            chunk_row = conn.execute("SELECT * FROM chunk WHERE id = ?", (c["id"],)).fetchone()
+            file_row = conn.execute(
+                "SELECT * FROM file WHERE content_hash = ? LIMIT 1", (c["content_hash"],)
+            ).fetchone()
+            hits.append(
+                {
+                    "_id": f"doc-{i}",
+                    "_score": 0.9 - i * 0.1,
+                    "_source": {
+                        "chunk_id": c["id"],
+                        "content": chunk_row["content"],
+                        "content_hash": c["content_hash"],
+                        "chunk_index": i,
+                        "file_kind": file_row["file_kind"] if file_row else "text",
+                        "source_id": file_row["source_id"] if file_row else "src-1",
+                        "file_path": file_row["path"] if file_row else "",
+                    },
+                }
+            )
 
-        mock_qdrant = MagicMock()
-        mock_qdrant.query_points.return_value.points = mock_points
+        mock_os_client = MagicMock()
+        mock_os_client.indices.exists.return_value = True
+        mock_os_client.search.return_value = {
+            "hits": {"total": {"value": len(hits)}, "hits": hits}
+        }
 
         mock_embed_model = MagicMock()
         mock_embed_model.encode.return_value = np.array([[0.1] * 768])
@@ -159,6 +196,11 @@ class TestQueryFlow:
                 {"message": {"content": "This project processes files using Python and SQLite."}}
             ],
         }
+
+        config = KrisConfig(
+            data_dir=str(tmp_path),
+            opensearch=OpenSearchConfig(url="https://localhost:9200"),
+        )
 
         manager = ModelManager()
 
@@ -173,14 +215,14 @@ class TestQueryFlow:
         with (
             patch.object(manager, "load_embedding_model", return_value=mock_embed_model),
             patch.object(manager, "load_llm", return_value=mock_llm),
-            patch("qdrant_client.QdrantClient", return_value=mock_qdrant),
+            patch("kris.processing.embed.create_opensearch_client", return_value=mock_os_client),
         ):
             result = query(
                 question="what does this project do?",
                 conn=conn,
                 model_manager=manager,
                 registry=registry,
-                qdrant_path="/tmp/qdrant",
+                config=config,
                 top_k=5,
                 retrieval_only=False,
             )
@@ -192,15 +234,21 @@ class TestQueryFlow:
         mock_llm.create_chat_completion.assert_called_once()
         conn.close()
 
-    def test_query_no_llm_configured_raises(self, indexed_env):
+    def test_query_no_llm_configured_raises(self, indexed_env, tmp_path):
         """Query without LLM configured should raise RuntimeError."""
         conn = get_connection(indexed_env["db_path"])
 
-        mock_qdrant = MagicMock()
-        mock_qdrant.query_points.return_value.points = []
+        mock_os_client = MagicMock()
+        mock_os_client.indices.exists.return_value = True
+        mock_os_client.search.return_value = {"hits": {"total": {"value": 0}, "hits": []}}
 
         mock_embed_model = MagicMock()
         mock_embed_model.encode.return_value = np.array([[0.1] * 768])
+
+        config = KrisConfig(
+            data_dir=str(tmp_path),
+            opensearch=OpenSearchConfig(url="https://localhost:9200"),
+        )
 
         manager = ModelManager()
 
@@ -212,7 +260,7 @@ class TestQueryFlow:
 
         with (
             patch.object(manager, "load_embedding_model", return_value=mock_embed_model),
-            patch("qdrant_client.QdrantClient", return_value=mock_qdrant),
+            patch("kris.processing.embed.create_opensearch_client", return_value=mock_os_client),
             pytest.raises(RuntimeError, match="LLM model not configured"),
         ):
             query(
@@ -220,7 +268,7 @@ class TestQueryFlow:
                 conn=conn,
                 model_manager=manager,
                 registry=registry,
-                qdrant_path="/tmp/qdrant",
+                config=config,
                 retrieval_only=False,
             )
         conn.close()
