@@ -40,7 +40,17 @@ class ModelManager:
         logger.info("Loading embedding model: %s", info.name)
         from sentence_transformers import SentenceTransformer
 
-        model = SentenceTransformer(info.name)
+        # Suppress the benign "LOAD REPORT ... position_ids UNEXPECTED" warning
+        # from transformers when loading BAAI/bge-base-en-v1.5 (position_ids was
+        # removed from newer BertModel but still exists in the checkpoint weights).
+        loading_logger = logging.getLogger("transformers.utils.loading_report")
+        original_level = loading_logger.level
+        loading_logger.setLevel(logging.ERROR)
+        try:
+            model = SentenceTransformer(info.name)
+        finally:
+            loading_logger.setLevel(original_level)
+
         logger.info("Embedding model loaded on device: %s", model.device)
         self._loaded_model = model
         self._loaded_model_id = info.model_id
@@ -84,7 +94,7 @@ class ModelManager:
 
         model = Llama(
             model_path=info.path_or_repo,
-            n_ctx=4096,
+            n_ctx=info.n_ctx,
             n_gpu_layers=-1,  # offload all layers to GPU
             verbose=False,
         )

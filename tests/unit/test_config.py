@@ -197,6 +197,43 @@ class TestKrisConfigProperties:
         assert config.opensearch_index == "myapp_chunks"
 
 
+class TestLLMNCtxConfig:
+    """ST011 — LLM n_ctx is configurable via [models.llm] config."""
+
+    def test_default_n_ctx(self):
+        config = KrisConfig()
+        assert config.models.llm.n_ctx == 4096
+
+    def test_custom_n_ctx_from_toml(self, tmp_path):
+        content = """\
+[sources.test]
+name = "Test"
+base_path = "/tmp"
+
+[models.llm]
+name = "test-model"
+model_path = "/tmp/model.gguf"
+n_ctx = 8192
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.models.llm.n_ctx == 8192
+
+    def test_n_ctx_absent_uses_default(self, tmp_path):
+        content = """\
+[sources.test]
+name = "Test"
+base_path = "/tmp"
+
+[models.llm]
+name = "test-model"
+model_path = "/tmp/model.gguf"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.models.llm.n_ctx == 4096
+
+
 class TestGenerateDefaultConfig:
     def test_creates_config_file(self, tmp_path):
         path = tmp_path / "config.toml"

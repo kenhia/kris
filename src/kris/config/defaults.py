@@ -103,6 +103,7 @@ vram_gb = 0.5
 # name = "your-model-name"
 # model_path = "/path/to/model.gguf"
 # vram_gb = 8.0
+# n_ctx = 4096                  # context window size (tokens)
 """
 
 

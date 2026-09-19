@@ -123,6 +123,55 @@ class TestMeasureModelVram:
         mock_torch.cuda.mem_get_info.assert_called()
 
 
+class TestEmbeddingLoadReportSuppression:
+    """ST007 — BertModel LOAD REPORT warning is suppressed during embedding model load."""
+
+    def test_loading_report_logger_suppressed_during_load(self):
+        """Verify transformers.utils.loading_report logger is set to ERROR during load."""
+        import logging
+
+        from kris.models.manager import ModelManager
+
+        manager = ModelManager()
+
+        loading_logger = logging.getLogger("transformers.utils.loading_report")
+        captured_levels: list[int] = []
+
+        class SentenceTransformerStub:
+            def __init__(self, name):
+                # Capture the logger level during model construction
+                captured_levels.append(loading_logger.level)
+                self.device = "cpu"
+
+        with patch(
+            "kris.models.manager.SentenceTransformer", SentenceTransformerStub, create=True
+        ):
+            try:
+                # The function does `from sentence_transformers import SentenceTransformer`
+                # We need to mock sentence_transformers module
+                mock_st_module = MagicMock()
+                mock_st_module.SentenceTransformer = SentenceTransformerStub
+                with patch.dict("sys.modules", {"sentence_transformers": mock_st_module}):
+                    from kris.models.registry import ModelInfo
+
+                    info = ModelInfo(
+                        model_id="embedding",
+                        model_type="embedding",
+                        name="test-model",
+                        path_or_repo="test-model",
+                    )
+                    manager.load_embedding_model(info)
+            finally:
+                pass
+
+        # During SentenceTransformer construction, the logger should have been ERROR
+        assert len(captured_levels) == 1
+        assert captured_levels[0] >= logging.ERROR
+
+        # After load, the logger should be restored
+        assert loading_logger.level < logging.ERROR or loading_logger.level == 0
+
+
 class TestConfigUpdateModelSizes:
     """T043, T044, T045 — dry-run, no-GPU, OOM handling."""
 

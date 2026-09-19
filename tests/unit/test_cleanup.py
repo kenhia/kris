@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from kris.catalog.content import insert_if_not_exists
 from kris.catalog.files import (
     cleanup_missing_files,
@@ -63,10 +65,16 @@ class TestCleanupMissingFiles:
         f_new = insert_file(
             db, _make_file(sample_source, path="/new.txt", content_hash="new_hash")
         )
+        # Timestamps are relative to now: a fixed date would stop being "recent"
+        # once wall-clock time passed the older_than_days window.
+        now = datetime.now(UTC)
+        stamp = "%Y-%m-%dT%H:%M:%S"
         # Old file went missing 100 days ago
-        update_file_visibility(db, f_old.id, "missing", "2025-12-10T00:00:00")
+        update_file_visibility(
+            db, f_old.id, "missing", (now - timedelta(days=100)).strftime(stamp)
+        )
         # New file went missing just now
-        update_file_visibility(db, f_new.id, "missing", "2026-03-19T00:00:00")
+        update_file_visibility(db, f_new.id, "missing", now.strftime(stamp))
 
         result = cleanup_missing_files(db, older_than_days=30)
         assert result["files_removed"] == 1

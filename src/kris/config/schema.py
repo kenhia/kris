@@ -81,6 +81,7 @@ class LLMModelConfig:
     name: str = ""
     model_path: str = ""
     vram_gb: float = 8.0
+    n_ctx: int = 4096
 
 
 @dataclass
@@ -159,6 +160,7 @@ def _parse_models(raw: dict) -> ModelsConfig:
             name=llm_raw.get("name", ""),
             model_path=llm_raw.get("model_path", ""),
             vram_gb=llm_raw.get("vram_gb", 8.0),
+            n_ctx=llm_raw.get("n_ctx", 4096),
         ),
     )
 

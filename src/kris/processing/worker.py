@@ -140,7 +140,9 @@ def execute_task(
     except Exception as e:
         logger.error("Task %s failed: %s", task.id, e)
         error_msg = str(e)
-        if task.attempts >= task.max_attempts:
+        # task.attempts is stale (pre-increment); DB already incremented,
+        # so use +1 to reflect the current attempt number.
+        if task.attempts + 1 >= task.max_attempts:
             update_task_status(conn, task.id, "failed", error=error_msg)
         else:
             update_task_status(conn, task.id, "queued", error=error_msg)
@@ -164,6 +166,7 @@ def run_worker(
     failed = 0
     _items_processed = 0
     _last_batch_report = 0
+    _seen_task_ids: set[str] = set()  # Track unique tasks to avoid retry double-counting
 
     # Create a single OpenSearch client for the entire run to avoid
     # per-task connection overhead.
@@ -195,8 +198,16 @@ def run_worker(
                 )
                 if success:
                     completed += 1
+                    _seen_task_ids.add(task.id)
                 else:
-                    failed += 1
+                    # Only count as failed if permanently failed (not re-queued for retry)
+                    if task.id not in _seen_task_ids:
+                        row = conn.execute(
+                            "SELECT status FROM task WHERE id = ?", (task.id,)
+                        ).fetchone()
+                        if row and row[0] == "failed":
+                            failed += 1
+                            _seen_task_ids.add(task.id)
                 _items_processed += 1
                 made_progress = True
 

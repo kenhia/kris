@@ -10,6 +10,7 @@ import typer
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from kris.catalog.db import get_connection
+from kris.catalog.tasks import count_tasks_by_status
 from kris.cli.app import app, console, is_json_output, print_error, print_json_response
 from kris.config.schema import get_effective_excludes, load_config
 from kris.models.manager import ModelManager
@@ -100,6 +101,7 @@ def index(
 
         # Phase 3: Execute tasks with progress
         if planned > 0:
+            queued_total = count_tasks_by_status(conn, "queued")
             if not json_output:
                 with Progress(
                     SpinnerColumn(),
@@ -109,7 +111,7 @@ def index(
                     TimeElapsedColumn(),
                     console=console,
                 ) as progress:
-                    task_id = progress.add_task("Processing...", total=planned * 3)
+                    task_id = progress.add_task("Processing...", total=queued_total)
 
                     def on_progress(completed: int, failed: int) -> None:
                         progress.update(task_id, completed=completed + failed)
