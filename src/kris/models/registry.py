@@ -17,6 +17,7 @@ class ModelInfo:
     path_or_repo: str
     dimensions: int | None = None
     vram_gb: float = 0.0
+    n_ctx: int = 4096
 
 
 class ModelRegistry:
@@ -45,6 +46,7 @@ class ModelRegistry:
                 name=llm.name,
                 path_or_repo=llm.model_path or llm.name,
                 vram_gb=llm.vram_gb,
+                n_ctx=llm.n_ctx,
             )
 
     def get(self, model_id: str) -> ModelInfo | None:

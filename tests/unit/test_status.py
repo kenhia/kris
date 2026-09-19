@@ -113,9 +113,9 @@ def status_db(tmp_path):
     # Embeddings (for counting)
     for i in range(3):
         conn.execute(
-            "INSERT INTO embedding (id, chunk_id, model_id, collection_name, qdrant_point_id) "
+            "INSERT INTO embedding (id, chunk_id, model_id, index_name, opensearch_doc_id) "
             "VALUES (?, ?, ?, ?, ?)",
-            (f"emb-{i}", f"chunk-{i}", "embedding", "kris_chunks", f"pt-{i}"),
+            (f"emb-{i}", f"chunk-{i}", "embedding", "kris_chunks", f"doc-{i}"),
         )
 
     # Task with error for the failed file

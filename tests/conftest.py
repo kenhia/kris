@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from unittest.mock import MagicMock
 
 import pytest
 
 from kris.catalog.db import get_connection
+from kris.config.schema import KrisConfig, OpenSearchConfig
 
 
 @pytest.fixture
@@ -51,3 +53,51 @@ def sample_file_tree(tmp_path):
     (subdir / "lib.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
 
     return root
+
+
+@pytest.fixture
+def opensearch_config(tmp_path) -> KrisConfig:
+    """KrisConfig with OpenSearch settings suitable for testing."""
+    return KrisConfig(
+        data_dir=tmp_path / "kris-data",
+        opensearch=OpenSearchConfig(
+            url="https://localhost:9200",
+            username="admin",
+            password="admin",
+            verify_certs=False,
+            index_prefix="kris_test",
+        ),
+    )
+
+
+@pytest.fixture
+def mock_opensearch_client() -> MagicMock:
+    """Mock OpenSearch client with common method stubs."""
+    client = MagicMock()
+
+    # indices namespace
+    client.indices.exists.return_value = False
+    client.indices.create.return_value = {"acknowledged": True}
+    client.indices.get_mapping.return_value = {}
+
+    # cluster namespace
+    client.cluster.health.return_value = {
+        "cluster_name": "kris-test",
+        "status": "green",
+        "number_of_nodes": 1,
+    }
+
+    # info
+    client.info.return_value = {
+        "version": {"number": "2.19.0", "distribution": "opensearch"},
+    }
+
+    # search
+    client.search.return_value = {
+        "hits": {"total": {"value": 0}, "hits": []},
+    }
+
+    # delete
+    client.delete.return_value = {"result": "deleted"}
+
+    return client

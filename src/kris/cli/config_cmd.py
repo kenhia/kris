@@ -70,6 +70,46 @@ def config_validate(
             excludes = get_effective_excludes(source)
             console.print(f"  Source '{source_id}': {len(excludes)} effective exclude patterns")
 
+        # OpenSearch connectivity check
+        _check_opensearch_health(config)
+
+
+def _check_opensearch_health(config) -> None:
+    """Check OpenSearch connectivity and report health."""
+    from rich.table import Table
+
+    try:
+        from kris.processing.embed import create_opensearch_client
+
+        client = create_opensearch_client(config)
+        health = client.cluster.health()
+
+        table = Table(title="OpenSearch Connection")
+        table.add_column("Property")
+        table.add_column("Value")
+
+        status = health.get("status", "unknown")
+        status_color = {"green": "green", "yellow": "yellow", "red": "red"}.get(status, "dim")
+        table.add_row("URL", config.opensearch.url)
+        table.add_row("Cluster", health.get("cluster_name", "?"))
+        table.add_row("Status", f"[{status_color}]{status}[/{status_color}]")
+
+        index_name = config.opensearch_index
+        if client.indices.exists(index=index_name):
+            stats = client.indices.stats(index=index_name)
+            idx_stats = stats.get("indices", {}).get(index_name, {}).get("primaries", {})
+            docs = idx_stats.get("docs", {}).get("count", 0)
+            size = idx_stats.get("store", {}).get("size_in_bytes", 0)
+            table.add_row("Index", index_name)
+            table.add_row("Documents", str(docs))
+            table.add_row("Store size", f"{size / 1024 / 1024:.1f} MB")
+        else:
+            table.add_row("Index", f"{index_name} (not created yet)")
+
+        console.print(table)
+    except ConnectionError as e:
+        console.print(f"[yellow]OpenSearch:[/yellow] {e}")
+
 
 @config_app.command("update-model-sizes")
 def config_update_model_sizes(

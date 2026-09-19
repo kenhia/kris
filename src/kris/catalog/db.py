@@ -86,8 +86,8 @@ CREATE TABLE IF NOT EXISTS embedding (
     id              TEXT PRIMARY KEY,
     chunk_id        TEXT NOT NULL REFERENCES chunk(id),
     model_id        TEXT NOT NULL,
-    collection_name TEXT NOT NULL,
-    qdrant_point_id TEXT NOT NULL
+    index_name      TEXT NOT NULL,
+    opensearch_doc_id TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS model_registry (
@@ -129,6 +129,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 def initialize_schema(conn: sqlite3.Connection) -> None:
     """Create all MVP tables and indexes if they don't exist."""
     conn.executescript(_MVP_DDL)
+    _migrate_embedding_columns(conn)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS schema_version "
         "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))"
@@ -142,6 +143,16 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
             (SCHEMA_VERSION,),
         )
         conn.commit()
+
+
+def _migrate_embedding_columns(conn: sqlite3.Connection) -> None:
+    """Rename legacy Qdrant column names to OpenSearch names (idempotent)."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(embedding)").fetchall()}
+    if "qdrant_point_id" in columns:
+        conn.execute("ALTER TABLE embedding RENAME COLUMN qdrant_point_id TO opensearch_doc_id")
+    if "collection_name" in columns:
+        conn.execute("ALTER TABLE embedding RENAME COLUMN collection_name TO index_name")
+    conn.commit()
 
 
 def get_connection(db_path: str | Path) -> sqlite3.Connection:

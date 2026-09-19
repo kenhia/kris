@@ -212,7 +212,7 @@ I already have a working "Knowledge base" with `krag`, so while this will replac
 3. Search
 4. Curation
 
-I am particularly interested, as we move further towards the complete project, in using the various items together, for example, using both semantic and direct search (Qdrant and indexing) together to enhance the quality of responses.
+I am particularly interested, as we move further towards the complete project, in using the various items together, for example, using both semantic and full-text search (OpenSearch k-NN and BM25) together to enhance the quality of responses.
 
 ### Q18: Scale Expectations
 Rough order of magnitude for your data:

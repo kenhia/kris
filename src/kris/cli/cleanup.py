@@ -19,7 +19,7 @@ from kris.cli.app import (
     print_json_response,
 )
 from kris.config.schema import load_config
-from kris.processing.embed import delete_points
+from kris.processing.embed import create_opensearch_client, delete_documents
 
 
 def _parse_duration(duration_str: str) -> int:
@@ -102,10 +102,10 @@ def cleanup(
                     source_id=source,
                     path_pattern=path,
                 )
-                # Delete Qdrant points
-                qdrant_path = config.db_path.parent / "qdrant"
-                if result["qdrant_point_ids"]:
-                    delete_points(qdrant_path, result["qdrant_point_ids"])
+                # Delete OpenSearch documents
+                if result["opensearch_doc_ids"]:
+                    client = create_opensearch_client(config)
+                    delete_documents(client, config.opensearch_index, result["opensearch_doc_ids"])
                 print_json_response("cleanup", result)
             else:
                 print_json_response("cleanup", {**preview, "dry_run": True})
@@ -118,7 +118,7 @@ def cleanup(
         table.add_row("Files", str(preview["files_removed"]))
         table.add_row("Chunks", str(preview["chunks_removed"]))
         table.add_row("Embeddings", str(preview["embeddings_removed"]))
-        table.add_row("Qdrant points", str(len(preview["qdrant_point_ids"])))
+        table.add_row("Search documents", str(len(preview["opensearch_doc_ids"])))
         out_console.print(table)
 
         if dry_run:
@@ -140,10 +140,10 @@ def cleanup(
             path_pattern=path,
         )
 
-        # Delete Qdrant points
-        qdrant_path = config.db_path.parent / "qdrant"
-        if result["qdrant_point_ids"]:
-            delete_points(qdrant_path, result["qdrant_point_ids"])
+        # Delete OpenSearch documents
+        if result["opensearch_doc_ids"]:
+            client = create_opensearch_client(config)
+            delete_documents(client, config.opensearch_index, result["opensearch_doc_ids"])
 
         console.print(
             f"[green]Removed {result['files_removed']} files, "

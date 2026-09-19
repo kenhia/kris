@@ -53,7 +53,7 @@ log_level = "INFO"
 # Default: $XDG_DATA_HOME/kris (~/.local/share/kris)
 # data_dir = ""
 
-# Cache directory (Qdrant storage, model cache)
+# Cache directory (model cache)
 # Default: $XDG_CACHE_HOME/kris (~/.cache/kris)
 # cache_dir = ""
 
@@ -70,11 +70,13 @@ default_exclude_patterns = [
     ".coverage", "coverage",
 ]
 
-# Qdrant vector storage configuration
-[qdrant]
-mode = "embedded"              # "embedded" (local file) or "server" (HTTP)
-# url = "http://localhost:6333"  # used when mode = "server"
-# api_key = ""                   # optional, for authenticated instances
+# OpenSearch search backend configuration
+[opensearch]
+url = "https://localhost:9200"
+username = "admin"
+password = ""                    # or set KRIS_OPENSEARCH_PASSWORD env var
+verify_certs = false             # true for production with real certificates
+index_prefix = "kris"            # indices named: kris_chunks, etc.
 
 # Sources — add your data directories here
 # Each source has a unique ID and points to a directory on disk.
@@ -101,6 +103,7 @@ vram_gb = 0.5
 # name = "your-model-name"
 # model_path = "/path/to/model.gguf"
 # vram_gb = 8.0
+# n_ctx = 4096                  # context window size (tokens)
 """
 
 

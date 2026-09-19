@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from kris.models.manager import ModelManager
     from kris.models.registry import ModelRegistry
 from kris.processing.chunk import chunk_code, chunk_markdown, chunk_text, save_chunks
-from kris.processing.embed import create_qdrant_client, embed_chunks
+from kris.processing.embed import create_opensearch_client, embed_chunks
 from kris.processing.extract import extract_for_content
 
 logger = logging.getLogger(__name__)
@@ -76,11 +76,11 @@ def execute_task(
     conn: sqlite3.Connection,
     task,
     data_dir: Path,
-    qdrant_path: Path,
+    config: KrisConfig,
     model_manager: ModelManager,
     registry: ModelRegistry,
     *,
-    qdrant_client: object | None = None,
+    opensearch_client: object | None = None,
 ) -> bool:
     """Execute a single task. Returns True on success."""
     now = datetime.now(UTC).isoformat()
@@ -125,8 +125,8 @@ def execute_task(
                 task.content_hash,
                 model_manager,
                 model_info,
-                qdrant_path,
-                client=qdrant_client,
+                config,
+                client=opensearch_client,
             )
             logger.debug("Embedded %d chunks for %s", count, task.content_hash[:12])
 
@@ -140,7 +140,9 @@ def execute_task(
     except Exception as e:
         logger.error("Task %s failed: %s", task.id, e)
         error_msg = str(e)
-        if task.attempts >= task.max_attempts:
+        # task.attempts is stale (pre-increment); DB already incremented,
+        # so use +1 to reflect the current attempt number.
+        if task.attempts + 1 >= task.max_attempts:
             update_task_status(conn, task.id, "failed", error=error_msg)
         else:
             update_task_status(conn, task.id, "queued", error=error_msg)
@@ -150,11 +152,10 @@ def execute_task(
 def run_worker(
     conn: sqlite3.Connection,
     data_dir: Path,
-    qdrant_path: Path,
+    config: KrisConfig,
     model_manager: ModelManager,
     registry: ModelRegistry,
     on_progress: Callable[[int, int], None] | None = None,
-    config: KrisConfig | None = None,
 ) -> tuple[int, int]:
     """Process all queued tasks in dependency order.
 
@@ -165,10 +166,11 @@ def run_worker(
     failed = 0
     _items_processed = 0
     _last_batch_report = 0
+    _seen_task_ids: set[str] = set()  # Track unique tasks to avoid retry double-counting
 
-    # Create a single Qdrant client for the entire run to avoid
-    # per-task open/close overhead in embedded mode.
-    qdrant_client = create_qdrant_client(config, qdrant_path=qdrant_path)
+    # Create a single OpenSearch client for the entire run to avoid
+    # per-task connection overhead.
+    opensearch_client = create_opensearch_client(config)
 
     # Process in priority order, grouped by model_hint for affinity
     # First pass: non-model tasks (extract, chunk)
@@ -189,15 +191,23 @@ def run_worker(
                     conn,
                     task,
                     data_dir,
-                    qdrant_path,
+                    config,
                     model_manager,
                     registry,
-                    qdrant_client=qdrant_client,
+                    opensearch_client=opensearch_client,
                 )
                 if success:
                     completed += 1
+                    _seen_task_ids.add(task.id)
                 else:
-                    failed += 1
+                    # Only count as failed if permanently failed (not re-queued for retry)
+                    if task.id not in _seen_task_ids:
+                        row = conn.execute(
+                            "SELECT status FROM task WHERE id = ?", (task.id,)
+                        ).fetchone()
+                        if row and row[0] == "failed":
+                            failed += 1
+                            _seen_task_ids.add(task.id)
                 _items_processed += 1
                 made_progress = True
 

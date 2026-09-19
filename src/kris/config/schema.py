@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _xdg_config_home() -> Path:
@@ -41,10 +44,12 @@ def default_cache_dir() -> Path:
 
 
 @dataclass
-class QdrantConfig:
-    mode: str = "embedded"
-    url: str = "http://localhost:6333"
-    api_key: str = ""
+class OpenSearchConfig:
+    url: str = "https://localhost:9200"
+    username: str = "admin"
+    password: str = ""
+    verify_certs: bool = False
+    index_prefix: str = "kris"
 
 
 @dataclass
@@ -76,6 +81,7 @@ class LLMModelConfig:
     name: str = ""
     model_path: str = ""
     vram_gb: float = 8.0
+    n_ctx: int = 4096
 
 
 @dataclass
@@ -88,7 +94,7 @@ class ModelsConfig:
 class KrisConfig:
     sources: dict[str, SourceConfig] = field(default_factory=dict)
     models: ModelsConfig = field(default_factory=ModelsConfig)
-    qdrant: QdrantConfig = field(default_factory=QdrantConfig)
+    opensearch: OpenSearchConfig = field(default_factory=OpenSearchConfig)
     data_dir: str = ""
     cache_dir: str = ""
     log_level: str = "INFO"
@@ -104,8 +110,8 @@ class KrisConfig:
         return Path(self.data_dir) / "catalog.db"
 
     @property
-    def qdrant_path(self) -> Path:
-        return Path(self.cache_dir) / "qdrant"
+    def opensearch_index(self) -> str:
+        return f"{self.opensearch.index_prefix}_chunks"
 
 
 class ConfigError(Exception):
@@ -154,15 +160,23 @@ def _parse_models(raw: dict) -> ModelsConfig:
             name=llm_raw.get("name", ""),
             model_path=llm_raw.get("model_path", ""),
             vram_gb=llm_raw.get("vram_gb", 8.0),
+            n_ctx=llm_raw.get("n_ctx", 4096),
         ),
     )
 
 
-def _parse_qdrant(raw: dict) -> QdrantConfig:
-    return QdrantConfig(
-        mode=raw.get("mode", "embedded"),
-        url=raw.get("url", "http://localhost:6333"),
-        api_key=raw.get("api_key", ""),
+def _parse_opensearch(raw: dict) -> OpenSearchConfig:
+    import os
+
+    password = raw.get("password", "")
+    if not password:
+        password = os.environ.get("KRIS_OPENSEARCH_PASSWORD", "")
+    return OpenSearchConfig(
+        url=raw.get("url", "https://localhost:9200"),
+        username=raw.get("username", "admin"),
+        password=password,
+        verify_certs=raw.get("verify_certs", False),
+        index_prefix=raw.get("index_prefix", "kris"),
     )
 
 
@@ -206,13 +220,27 @@ def load_config(config_path: str | Path | None = None) -> KrisConfig:
     for source_id, source_raw in raw.get("sources", {}).items():
         sources[source_id] = _parse_source(source_id, source_raw)
 
+    # Legacy [qdrant] detection (T013)
+    has_qdrant = "qdrant" in raw
+    has_opensearch = "opensearch" in raw
+    if has_qdrant and not has_opensearch:
+        raise ConfigError(
+            "Found legacy [qdrant] config section but no [opensearch] section. "
+            "Please migrate to [opensearch]. See docs/setup.md for migration steps."
+        )
+    if has_qdrant and has_opensearch:
+        logger.warning(
+            "Config contains both [qdrant] and [opensearch] sections. "
+            "The [qdrant] section is ignored — remove it to silence this warning."
+        )
+
     models = _parse_models(raw.get("models", {}))
-    qdrant = _parse_qdrant(raw.get("qdrant", {}))
+    opensearch = _parse_opensearch(raw.get("opensearch", {}))
 
     return KrisConfig(
         sources=sources,
         models=models,
-        qdrant=qdrant,
+        opensearch=opensearch,
         data_dir=raw.get("data_dir", ""),
         cache_dir=raw.get("cache_dir", ""),
         log_level=raw.get("log_level", "INFO"),

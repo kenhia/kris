@@ -203,14 +203,16 @@ class TestIndexFlow:
         mock_info.dimensions = 384
         mock_registry.get.return_value = mock_info
 
-        qdrant_path = index_env["data_dir"].parent / "qdrant"
-
-        # Patch embed_chunks to avoid real Qdrant/model deps
-        with patch("kris.processing.worker.embed_chunks", return_value=1):
+        # Patch embed_chunks to avoid real OpenSearch/model deps
+        with (
+            patch("kris.processing.worker.embed_chunks", return_value=1),
+            patch("kris.processing.worker.create_opensearch_client"),
+        ):
+            mock_config = MagicMock()
             completed, failed = run_worker(
                 conn,
                 index_env["data_dir"],
-                qdrant_path,
+                mock_config,
                 mock_manager,
                 mock_registry,
             )

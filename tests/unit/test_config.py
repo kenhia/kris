@@ -10,7 +10,7 @@ from kris.config.defaults import DEFAULT_EXCLUDE_PATTERNS, generate_default_conf
 from kris.config.schema import (
     ConfigError,
     KrisConfig,
-    QdrantConfig,
+    OpenSearchConfig,
     SourceConfig,
     default_cache_dir,
     default_config_path,
@@ -188,9 +188,50 @@ class TestKrisConfigProperties:
         config = KrisConfig()
         assert config.db_path == Path(config.data_dir) / "catalog.db"
 
-    def test_qdrant_path(self, config_dir):
+    def test_opensearch_index(self):
+        config = KrisConfig(opensearch=OpenSearchConfig(index_prefix="kris"))
+        assert config.opensearch_index == "kris_chunks"
+
+    def test_opensearch_index_custom_prefix(self):
+        config = KrisConfig(opensearch=OpenSearchConfig(index_prefix="myapp"))
+        assert config.opensearch_index == "myapp_chunks"
+
+
+class TestLLMNCtxConfig:
+    """ST011 — LLM n_ctx is configurable via [models.llm] config."""
+
+    def test_default_n_ctx(self):
         config = KrisConfig()
-        assert config.qdrant_path == Path(config.cache_dir) / "qdrant"
+        assert config.models.llm.n_ctx == 4096
+
+    def test_custom_n_ctx_from_toml(self, tmp_path):
+        content = """\
+[sources.test]
+name = "Test"
+base_path = "/tmp"
+
+[models.llm]
+name = "test-model"
+model_path = "/tmp/model.gguf"
+n_ctx = 8192
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.models.llm.n_ctx == 8192
+
+    def test_n_ctx_absent_uses_default(self, tmp_path):
+        content = """\
+[sources.test]
+name = "Test"
+base_path = "/tmp"
+
+[models.llm]
+name = "test-model"
+model_path = "/tmp/model.gguf"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.models.llm.n_ctx == 4096
 
 
 class TestGenerateDefaultConfig:
@@ -329,20 +370,59 @@ class TestGetEffectiveExcludes:
         assert custom_idx > default_last_idx
 
 
-class TestQdrantConfig:
-    """T009 — verify QdrantConfig defaults and validation."""
+class TestOpenSearchConfig:
+    """Verify OpenSearchConfig defaults, env var fallback, and TOML parsing."""
 
     def test_defaults(self):
-        qc = QdrantConfig()
-        assert qc.mode == "embedded"
-        assert qc.url == "http://localhost:6333"
-        assert qc.api_key == ""
+        oc = OpenSearchConfig()
+        assert oc.url == "https://localhost:9200"
+        assert oc.username == "admin"
+        assert oc.password == ""
+        assert oc.verify_certs is False
+        assert oc.index_prefix == "kris"
 
-    def test_server_mode(self):
-        qc = QdrantConfig(mode="server", url="http://qdrant:6333", api_key="secret")
-        assert qc.mode == "server"
-        assert qc.url == "http://qdrant:6333"
-        assert qc.api_key == "secret"
+    def test_custom_values(self):
+        oc = OpenSearchConfig(
+            url="https://myhost:9200",
+            username="user",
+            password="secret",
+            verify_certs=True,
+            index_prefix="myapp",
+        )
+        assert oc.url == "https://myhost:9200"
+        assert oc.username == "user"
+        assert oc.password == "secret"
+        assert oc.verify_certs is True
+        assert oc.index_prefix == "myapp"
+
+    def test_env_var_password_fallback(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KRIS_OPENSEARCH_PASSWORD", "env-secret")
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
+
+[opensearch]
+url = "https://myhost:9200"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.opensearch.password == "env-secret"
+
+    def test_toml_password_overrides_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KRIS_OPENSEARCH_PASSWORD", "env-secret")
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
+
+[opensearch]
+url = "https://myhost:9200"
+password = "toml-secret"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        config = load_config(path)
+        assert config.opensearch.password == "toml-secret"
 
     def test_parsed_from_toml(self, tmp_path):
         content = """\
@@ -350,22 +430,26 @@ class TestQdrantConfig:
 name = "S1"
 base_path = "/tmp"
 
-[qdrant]
-mode = "server"
-url = "http://myhost:6333"
-api_key = "mykey"
+[opensearch]
+url = "https://myhost:9200"
+username = "user"
+password = "pass"
+verify_certs = true
+index_prefix = "myapp"
 """
         path = _write_config(tmp_path / "config.toml", content)
         config = load_config(path)
-        assert config.qdrant.mode == "server"
-        assert config.qdrant.url == "http://myhost:6333"
-        assert config.qdrant.api_key == "mykey"
+        assert config.opensearch.url == "https://myhost:9200"
+        assert config.opensearch.username == "user"
+        assert config.opensearch.password == "pass"
+        assert config.opensearch.verify_certs is True
+        assert config.opensearch.index_prefix == "myapp"
 
 
 class TestBackwardCompatibility:
-    """T010 — config with no [qdrant] section or default_exclude_patterns loads with defaults."""
+    """Config with no [opensearch] section loads with defaults."""
 
-    def test_no_qdrant_section(self, tmp_path):
+    def test_no_opensearch_section(self, tmp_path):
         content = """\
 [sources.s1]
 name = "S1"
@@ -373,8 +457,8 @@ base_path = "/tmp"
 """
         path = _write_config(tmp_path / "config.toml", content)
         config = load_config(path)
-        assert config.qdrant.mode == "embedded"
-        assert config.qdrant.url == "http://localhost:6333"
+        assert config.opensearch.url == "https://localhost:9200"
+        assert config.opensearch.username == "admin"
 
     def test_no_include_default_exclude_patterns(self, tmp_path):
         content = """\
@@ -393,46 +477,102 @@ exclude_patterns = [".git"]
         path = _write_config(tmp_path / "config.toml", VALID_CONFIG)
         config = load_config(path)
         assert "test-src" in config.sources
-        assert config.qdrant.mode == "embedded"
+        assert config.opensearch.url == "https://localhost:9200"
         assert config.sources["test-src"].include_default_exclude_patterns is True
 
 
-class TestCreateQdrantClient:
-    """T012 — verify embedded vs server mode client creation."""
+class TestLegacyQdrantDetection:
+    """T013 — legacy [qdrant] config section detection."""
 
-    def test_embedded_mode(self, tmp_path):
-        from kris.processing.embed import create_qdrant_client
+    def test_qdrant_only_raises(self, tmp_path):
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
 
-        config = KrisConfig(qdrant=QdrantConfig(mode="embedded"))
-        client = create_qdrant_client(config, qdrant_path=tmp_path / "qdrant")
-        # The embedded client should have been created with a path
-        assert client is not None
+[qdrant]
+mode = "embedded"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        with pytest.raises(ConfigError, match=r"qdrant.*migrate"):
+            load_config(path)
 
-    def test_server_mode(self):
+    def test_qdrant_alongside_opensearch_warns(self, tmp_path, caplog):
+        import logging
+
+        content = """\
+[sources.s1]
+name = "S1"
+base_path = "/tmp"
+
+[qdrant]
+mode = "embedded"
+
+[opensearch]
+url = "https://localhost:9200"
+"""
+        path = _write_config(tmp_path / "config.toml", content)
+        with caplog.at_level(logging.WARNING):
+            config = load_config(path)
+        assert config.opensearch.url == "https://localhost:9200"
+        assert any("qdrant" in rec.message.lower() for rec in caplog.records)
+
+
+class TestCreateOpenSearchClient:
+    """Verify OpenSearch client creation from config."""
+
+    def test_creates_client(self, tmp_path):
         from unittest.mock import MagicMock, patch
 
-        from kris.processing.embed import create_qdrant_client
+        from kris.processing.embed import create_opensearch_client
 
         config = KrisConfig(
-            qdrant=QdrantConfig(mode="server", url="http://testhost:6333", api_key="key123")
+            data_dir=str(tmp_path),
+            opensearch=OpenSearchConfig(
+                url="https://myhost:9200",
+                username="admin",
+                password="secret",
+                verify_certs=False,
+            ),
         )
-        with patch("qdrant_client.QdrantClient") as mock_cls:
+        with patch("opensearchpy.OpenSearch") as mock_cls:
             mock_instance = MagicMock()
+            mock_instance.info.return_value = {"version": {"number": "2.19.0"}}
             mock_cls.return_value = mock_instance
-            client = create_qdrant_client(config)
-            mock_cls.assert_called_once_with(url="http://testhost:6333", api_key="key123")
+            client = create_opensearch_client(config)
+            mock_cls.assert_called_once_with(
+                hosts=[{"host": "myhost", "port": 9200}],
+                use_ssl=True,
+                verify_certs=False,
+                ssl_show_warn=False,
+                http_auth=("admin", "secret"),
+            )
             assert client is mock_instance
 
-    def test_server_mode_connection_error(self):
-        """T035 — server mode with unreachable URL produces actionable error."""
+    def test_connection_error(self):
         from unittest.mock import MagicMock, patch
 
-        from kris.processing.embed import create_qdrant_client
+        from kris.processing.embed import create_opensearch_client
 
-        config = KrisConfig(qdrant=QdrantConfig(mode="server", url="http://unreachable:6333"))
-        with patch("qdrant_client.QdrantClient") as mock_cls:
+        config = KrisConfig(opensearch=OpenSearchConfig(url="https://unreachable:9200"))
+        with patch("opensearchpy.OpenSearch") as mock_cls:
             mock_instance = MagicMock()
-            mock_instance.get_collections.side_effect = Exception("Connection refused")
+            mock_instance.info.side_effect = Exception("Connection refused")
             mock_cls.return_value = mock_instance
-            with pytest.raises(ConnectionError, match="Cannot connect to Qdrant server"):
-                create_qdrant_client(config)
+            with pytest.raises(ConnectionError, match="Cannot connect to OpenSearch"):
+                create_opensearch_client(config)
+
+    def test_auth_error(self):
+        from unittest.mock import MagicMock, patch
+
+        from kris.processing.embed import create_opensearch_client
+
+        config = KrisConfig(
+            opensearch=OpenSearchConfig(url="https://myhost:9200", password="wrong")
+        )
+        with patch("opensearchpy.OpenSearch") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.info.side_effect = Exception("401 Unauthorized")
+            mock_cls.return_value = mock_instance
+            with pytest.raises(ConnectionError, match="authentication failed"):
+                create_opensearch_client(config)

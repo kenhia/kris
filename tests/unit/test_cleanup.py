@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from kris.catalog.content import insert_if_not_exists
 from kris.catalog.files import (
     cleanup_missing_files,
@@ -63,10 +65,16 @@ class TestCleanupMissingFiles:
         f_new = insert_file(
             db, _make_file(sample_source, path="/new.txt", content_hash="new_hash")
         )
+        # Timestamps are relative to now: a fixed date would stop being "recent"
+        # once wall-clock time passed the older_than_days window.
+        now = datetime.now(UTC)
+        stamp = "%Y-%m-%dT%H:%M:%S"
         # Old file went missing 100 days ago
-        update_file_visibility(db, f_old.id, "missing", "2025-12-10T00:00:00")
+        update_file_visibility(
+            db, f_old.id, "missing", (now - timedelta(days=100)).strftime(stamp)
+        )
         # New file went missing just now
-        update_file_visibility(db, f_new.id, "missing", "2026-03-19T00:00:00")
+        update_file_visibility(db, f_new.id, "missing", now.strftime(stamp))
 
         result = cleanup_missing_files(db, older_than_days=30)
         assert result["files_removed"] == 1
@@ -124,7 +132,7 @@ class TestCleanupMissingFiles:
             ("chunk-1", "ch_cascade", 0, "chunk_hash_1", "text", 0, 4, "text"),
         )
         db.execute(
-            "INSERT INTO embedding (id, chunk_id, model_id, collection_name, qdrant_point_id) "
+            "INSERT INTO embedding (id, chunk_id, model_id, index_name, opensearch_doc_id) "
             "VALUES (?, ?, ?, ?, ?)",
             ("emb-1", "chunk-1", "model-1", "kris_chunks", "point-1"),
         )
@@ -157,8 +165,8 @@ class TestCleanupMissingFiles:
         # File should still exist after dry run
         assert get_file_by_id(db, f.id) is not None
 
-    def test_collects_qdrant_point_ids(self, db, sample_source):
-        """Cleanup returns Qdrant point IDs for external deletion."""
+    def test_collects_opensearch_doc_ids(self, db, sample_source):
+        """Cleanup returns OpenSearch document IDs for external deletion."""
         insert_if_not_exists(db, Content(content_hash="ch_qdrant"))
         f = insert_file(
             db, _make_file(sample_source, path="/qdrant.txt", content_hash="ch_qdrant")
@@ -170,7 +178,7 @@ class TestCleanupMissingFiles:
             ("chunk-q", "ch_qdrant", 0, "chunk_hash_q", "text", 0, 4, "text"),
         )
         db.execute(
-            "INSERT INTO embedding (id, chunk_id, model_id, collection_name, qdrant_point_id) "
+            "INSERT INTO embedding (id, chunk_id, model_id, index_name, opensearch_doc_id) "
             "VALUES (?, ?, ?, ?, ?)",
             ("emb-q", "chunk-q", "model-1", "kris_chunks", "qdrant-point-abc"),
         )
@@ -178,4 +186,4 @@ class TestCleanupMissingFiles:
 
         update_file_visibility(db, f.id, "missing", "2026-01-01T00:00:00")
         result = cleanup_missing_files(db)
-        assert "qdrant-point-abc" in result["qdrant_point_ids"]
+        assert "qdrant-point-abc" in result["opensearch_doc_ids"]

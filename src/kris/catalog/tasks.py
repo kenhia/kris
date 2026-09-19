@@ -63,6 +63,12 @@ def get_task(conn: sqlite3.Connection, task_id: str) -> Task | None:
     return _row_to_task(row) if row else None
 
 
+def count_tasks_by_status(conn: sqlite3.Connection, status: str) -> int:
+    """Count tasks with the given status."""
+    row = conn.execute("SELECT COUNT(*) FROM task WHERE status = ?", (status,)).fetchone()
+    return row[0] if row else 0
+
+
 def get_tasks_by_status(
     conn: sqlite3.Connection,
     status: str,
