@@ -1,5 +1,14 @@
 # kris
 
+> **Archived 2026-09-25 — retired 2026-09-19, no successor.**
+> kris (the successor to [krag](https://github.com/kenhia/krag)) was retired before it reached
+> a stable release. Its last in-flight sprint was finished and merged as
+> [PR #3](https://github.com/kenhia/kris/pull/3) before retirement, so the tracked tree here is
+> complete; the untracked working notes were kept in a private archive, so nothing was lost.
+> Retirement record: korg WI 2857; archive executed by korg WI 2858.
+>
+> **Do not run this.** It is unmaintained and its dependencies are frozen as of the last commit.
+
 A personal data intelligence system for indexing, analyzing, and querying data across local machines, remote Linux hosts, and NAS storage.
 
 > **Note**: kris is a personal learning and tooling project. While the goal is a fully functioning system, the primary purpose is to explore architectures for multi-source data indexing, semantic search, multi-LLM orchestration, and personal knowledge management. Expect experimentation, iteration, and evolving design decisions.
